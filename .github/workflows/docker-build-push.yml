@@ -1,0 +1,103 @@
+name: docker build and push
+
+# Reusable build-and-push for GHCR.
+#
+# Callers authenticate with the automatic GITHUB_TOKEN rather than a PAT, so no
+# registry credential has to be created, stored, or rotated. That only works for
+# packages owned by the same account as the calling repository, and only when
+# the calling job grants packages: write.
+#
+# Third-party actions are pinned by commit SHA, not tag: a tag is mutable and a
+# compromised one would run with this token in scope.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Image path without registry, e.g. "owner/name".
+        required: true
+        type: string
+      registry:
+        description: Registry host. Only ghcr.io works with the default GITHUB_TOKEN auth below.
+        default: ghcr.io
+        type: string
+      context:
+        description: Build context path within the calling repository.
+        default: .
+        type: string
+      dockerfile:
+        default: Dockerfile
+        type: string
+      platforms:
+        default: linux/amd64
+        type: string
+      push:
+        description: Set false to build only — useful for validating a pull request.
+        default: true
+        type: boolean
+    outputs:
+      digest:
+        description: Image digest. This is what a deployment should pin; tags move, digests do not.
+        value: ${{ jobs.build.outputs.digest }}
+      tags:
+        description: Tags applied to the pushed image.
+        value: ${{ jobs.build.outputs.tags }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - if: inputs.push
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # In a reusable workflow the github context is the *caller's*, so the
+      # source and revision labels name the repository and commit that actually
+      # holds the Dockerfile. That is what ties an opaque digest back to the
+      # build that produced it.
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ inputs.registry }}/${{ inputs.image }}
+          tags: |
+            type=raw,value={{date 'YYYY-MM-DD'}}
+            type=sha,format=long
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Image"
+            echo
+            echo '```'
+            echo "${{ inputs.registry }}/${{ inputs.image }}@${{ steps.build.outputs.digest }}"
+            echo '```'
+            echo
+            echo "Pin the digest above; tags move."
+          } >> "$GITHUB_STEP_SUMMARY"
