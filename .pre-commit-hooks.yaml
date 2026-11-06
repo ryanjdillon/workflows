@@ -1,0 +1,7 @@
+# Hooks for prek (and pre-commit). Pin `rev:` to a commit SHA in the caller.
+- id: check-instructions
+  name: check agent instruction files
+  description: Check AGENTS.md and SYSTEM.md against the agent instruction budget.
+  entry: check-instructions/check-instructions.py
+  language: script
+  files: (^|/)(AGENTS|SYSTEM)\.md$
