@@ -17,6 +17,7 @@ including private repositories, with no extra configuration.
 | Workflow | Purpose |
 |---|---|
 | [`docker-build-push.yml`](.github/workflows/docker-build-push.yml) | Build a Dockerfile and push it to GHCR using the automatic `GITHUB_TOKEN` |
+| [`nix-check.yml`](.github/workflows/nix-check.yml) | Run `nix flake check`; callers start it only for changes to Nix files |
 
 ## Shared checks
 
@@ -53,6 +54,33 @@ or rotated. This works for packages owned by the same account as the calling
 repository. Note that a token good for *pushing* in CI does nothing for
 *pulling* elsewhere: a private package still needs a `read:packages` credential
 wherever it is consumed.
+
+### `nix-check.yml`
+
+Normal CI does not install Nix. Start this workflow only for changes to Nix
+files, in a separate workflow of the caller:
+
+```yaml
+name: nix
+on:
+  pull_request:
+    paths: ["**.nix", "flake.lock"]
+  push:
+    branches: [main]
+    paths: ["**.nix", "flake.lock"]
+
+permissions:
+  contents: read
+
+jobs:
+  nix:
+    uses: ryanjdillon/workflows/.github/workflows/nix-check.yml@<sha>
+```
+
+Input: `command` (default `nix flake check`).
+
+Do not make this check a required status check. When the path filter skips
+the workflow, a required check stays pending, and the PR cannot merge.
 
 ### `check-instructions`
 
