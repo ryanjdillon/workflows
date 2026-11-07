@@ -143,6 +143,15 @@ Or run it once: `nix run github:ryanjdillon/workflows#check-instructions -- AGEN
   the action. `.pre-commit-hooks.yaml` and `flake.nix` call the same script.
   Do not copy the logic into an adapter.
 
+## Tests
+
+CI (`.github/workflows/check.yml`) runs each adapter of each shared check on
+its test data, in `<check>/testdata/`. It also makes sure that the bad test
+data fails. `nix.yml` runs `nix-check.yml` from this checkout, so the Nix
+adapter and the reusable workflow are tested before they merge.
+
+To test the prek hook on your machine: `check-instructions/test-hook.sh`.
+
 ## Gotchas
 
 - `env:` defined in the caller does **not** propagate into a reusable workflow.

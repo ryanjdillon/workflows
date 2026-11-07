@@ -1,0 +1,87 @@
+name: check
+
+# CI for this repo. It runs each adapter of each shared check on the test
+# data, and audits the workflows and actions. It does not install Nix: nix.yml
+# runs the Nix adapter, only for changes to Nix files or to the checks.
+#
+# Third-party actions are pinned by commit SHA: a tag is mutable.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check-instructions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: This repo's AGENTS.md
+        uses: ./check-instructions
+
+      - name: Action passes on good files
+        uses: ./check-instructions
+        with:
+          files: check-instructions/testdata/pass/AGENTS.md check-instructions/testdata/pass/SYSTEM.md
+
+      - name: Action fails on an AGENTS.md with no SYSTEM.md section
+        id: no-section
+        continue-on-error: true
+        uses: ./check-instructions
+        with:
+          files: check-instructions/testdata/fail/AGENTS.md
+
+      - name: Action fails on a file over the byte limit
+        id: too-large
+        continue-on-error: true
+        uses: ./check-instructions
+        with:
+          files: check-instructions/testdata/pass/AGENTS.md
+          byte-limit: "10"
+
+      - name: The bad files failed
+        env:
+          NO_SECTION: ${{ steps.no-section.outcome }}
+          TOO_LARGE: ${{ steps.too-large.outcome }}
+        run: |
+          [ "$NO_SECTION" = failure ] || { echo "error: no-section passed" >&2; exit 1; }
+          [ "$TOO_LARGE" = failure ] || { echo "error: too-large passed" >&2; exit 1; }
+
+      - uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
+        with:
+          prek-version: 0.5.6
+          install-only: true
+
+      - name: Hook
+        run: check-instructions/test-hook.sh
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        with:
+          args: -color
+
+      - uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          advanced-security: false
+
+      - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+        with:
+          version: 0.17.4
+          args: format --check
+
+      - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+        with:
+          version: 0.17.4

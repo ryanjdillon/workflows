@@ -1,0 +1,29 @@
+name: nix
+
+# Run nix-check.yml from this checkout, so a change to it is tested before it
+# merges. The paths also include the checks, because the flake's checks run
+# the Nix adapter on their test data.
+
+on:
+  pull_request:
+    paths:
+      - "**.nix"
+      - flake.lock
+      - check-instructions/**
+      - .github/workflows/nix.yml
+      - .github/workflows/nix-check.yml
+  push:
+    branches: [main]
+    paths:
+      - "**.nix"
+      - flake.lock
+      - check-instructions/**
+      - .github/workflows/nix.yml
+      - .github/workflows/nix-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  nix:
+    uses: ./.github/workflows/nix-check.yml
