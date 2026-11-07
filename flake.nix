@@ -43,7 +43,7 @@
       checks = forAllSystems (pkgs: {
         check-instructions-adapter = self.lib.checkInstructions {
           inherit pkgs;
-          files = [ ./check-instructions/testdata/AGENTS.md ];
+          files = [ ./check-instructions/testdata/pass/AGENTS.md ];
         };
       });
 
