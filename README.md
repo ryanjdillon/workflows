@@ -111,6 +111,11 @@ repos:
       - id: check-instructions
 ```
 
+The hook checks only the `AGENTS.md` and `SYSTEM.md` at the repo root, as the
+action does by default. A nested `AGENTS.md`, for example in a vendored
+dependency, has no `# SYSTEM.md` section. To check other files, set `files:`
+on the hook.
+
 With Nix, in a flake that has this repo as the input `workflows`:
 
 ```nix
