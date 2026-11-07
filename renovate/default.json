@@ -1,0 +1,32 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Shared preset for ryanjdillon repos. See the README of ryanjdillon/workflows.",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests"
+  ],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "pre-commit": {
+    "enabled": true
+  },
+  "nix": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Take releases of my own repos with no wait.",
+      "matchPackageNames": ["/(^|/)ryanjdillon//"],
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "description": "Move each pin to ryanjdillon/workflows (actions, workflows, prek rev) in one PR.",
+      "matchPackageNames": ["/(^|/)ryanjdillon/workflows$/"],
+      "groupName": "ryanjdillon/workflows"
+    }
+  ]
+}

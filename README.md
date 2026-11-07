@@ -172,6 +172,33 @@ To release:
    `git tag -f v1 vX.Y.Z`, then `git push -f origin v1`. Only the Renovate
    preset reference uses `v1`.
 
+## Renovate
+
+[`renovate/default.json`](renovate/default.json) is the shared Renovate
+preset. A repo extends it in its `renovate.json`:
+
+```json
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>ryanjdillon/workflows//renovate/default#v1"]
+}
+```
+
+The preset:
+
+- Waits 7 days before it takes a new release (`minimumReleaseAge`), and
+  opens the PR only after that time. Most malicious releases are found and
+  removed in a few days. Releases of my own repos do not wait.
+- Pins each GitHub Action and Docker image by digest, and keeps the version
+  comment.
+- Enables the managers that are off by default: prek (`pre-commit`) and Nix.
+- Moves all pins to `ryanjdillon/workflows` in one PR.
+- Runs lock file maintenance each week: `uv.lock`, `Cargo.lock`, and
+  `flake.lock`.
+
+Renovate runs as the Mend Renovate GitHub App. Install the App on each repo
+that has a `renovate.json`.
+
 ## Tests
 
 CI (`.github/workflows/check.yml`) runs each adapter of each shared check on
