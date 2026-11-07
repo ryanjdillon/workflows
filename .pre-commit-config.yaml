@@ -1,0 +1,10 @@
+# Run with prek (or pre-commit): `prek install` one time in each clone.
+# CI runs the same checks in .github/workflows/check.yml.
+repos:
+  - repo: local
+    hooks:
+      - id: check-instructions
+        name: check agent instruction files
+        entry: check-instructions/check-instructions.py
+        language: script
+        files: ^(AGENTS|SYSTEM)\.md$
