@@ -53,9 +53,12 @@ jobs:
           [ "$NO_SECTION" = failure ] || { echo "error: no-section passed" >&2; exit 1; }
           [ "$TOO_LARGE" = failure ] || { echo "error: too-large passed" >&2; exit 1; }
 
+      # latest-known is the newest prek that this action release has a
+      # checksum for. A newer version installs with no checksum check. Thus
+      # prek moves only when Renovate moves the action pin.
       - uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
         with:
-          prek-version: 0.5.6
+          prek-version: latest-known
           install-only: true
 
       - name: Hook
