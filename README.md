@@ -38,7 +38,7 @@ permissions:
 
 jobs:
   image:
-    uses: ryanjdillon/workflows/.github/workflows/docker-build-push.yml@v1
+    uses: ryanjdillon/workflows/.github/workflows/docker-build-push.yml@<sha> # v1.0.0
     with:
       image: ryanjdillon/my-image
 ```
@@ -74,7 +74,7 @@ permissions:
 
 jobs:
   nix:
-    uses: ryanjdillon/workflows/.github/workflows/nix-check.yml@<sha>
+    uses: ryanjdillon/workflows/.github/workflows/nix-check.yml@<sha> # v1.0.0
 ```
 
 Input: `command` (default `nix flake check`).
@@ -93,7 +93,7 @@ reasons for them are in `docs/system-prompt.md` of `ryanjdillon/agents`.
 In GitHub Actions, as a step in an existing job:
 
 ```yaml
-- uses: ryanjdillon/workflows/check-instructions@<sha>
+- uses: ryanjdillon/workflows/check-instructions@<sha> # v1.0.0
   with:
     files: AGENTS.md
 ```
@@ -106,7 +106,7 @@ With prek, in `.pre-commit-config.yaml`. pre-commit reads the same config:
 ```yaml
 repos:
   - repo: https://github.com/ryanjdillon/workflows
-    rev: <sha>
+    rev: <sha> # frozen: v1.0.0
     hooks:
       - id: check-instructions
 ```
@@ -132,16 +132,45 @@ Or run it once: `nix run github:ryanjdillon/workflows#check-instructions -- AGEN
 - **Third-party actions are pinned by commit SHA**, with the version in a
   trailing comment. Tags are mutable, and these workflows run with a token that
   can publish packages.
-- **Version with tags.** Cut `vN.N.N` releases and move a `vN` tag to the
-  newest compatible release so callers can pin `@v1`.
+- **Callers pin a release by its commit SHA,** with the version in a comment.
+  See [Releases](#releases).
 - **Prefer explicit `secrets:` over `secrets: inherit`.** Inherit is convenient
   and hands a shared workflow the caller's entire secret set.
 - Composite actions live in top-level directories with an `action.yml` and are
-  referenced as `ryanjdillon/workflows/<dir>@v1`. Use one for step-level reuse;
+  referenced as `ryanjdillon/workflows/<dir>@<sha>`. Use one for step-level reuse;
   use a reusable workflow for a whole job.
 - **A shared check has one definition.** Its directory holds the script and
   the action. `.pre-commit-hooks.yaml` and `flake.nix` call the same script.
   Do not copy the logic into an adapter.
+
+## Releases
+
+Callers pin a release by its commit SHA, not by its tag, because a tag is
+mutable. Put the version in a comment: `# v1.2.3` after `uses:`, and
+`# frozen: v1.2.3` after a prek `rev:`. Renovate reads the comment, and moves
+the pin to the SHA of the next release. The shared preset (see
+[Renovate](#renovate)) moves all the pins of a repo to the same release in
+one PR.
+
+Choose the version from the effect on callers:
+
+| Change | Version |
+| --- | --- |
+| A fix, with no change to inputs, outputs, hook ids, or results on good files | Patch |
+| A new check, workflow, or input, with a default that keeps the old behaviour | Minor |
+| A removed or renamed input, output, or hook id, or a stricter default | Major |
+
+A stricter default, for example a lower byte limit, can make a passing caller
+fail. Thus it is a major change.
+
+To release:
+
+1. Merge to `main`, with CI green.
+2. Create the release and its tag on that commit:
+   `gh release create vX.Y.Z --target <sha> --generate-notes`.
+3. Move the major tag to it: `git fetch --tags`, then
+   `git tag -f v1 vX.Y.Z`, then `git push -f origin v1`. Only the Renovate
+   preset reference uses `v1`.
 
 ## Tests
 
