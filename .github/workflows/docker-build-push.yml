@@ -54,6 +54,8 @@ jobs:
       tags: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -90,13 +92,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Values reach the shell through env, not ${{ }} interpolation, so a
+      # crafted input cannot inject commands.
       - name: Summary
+        env:
+          REGISTRY: ${{ inputs.registry }}
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           {
             echo "### Image"
             echo
             echo '```'
-            echo "${{ inputs.registry }}/${{ inputs.image }}@${{ steps.build.outputs.digest }}"
+            echo "${REGISTRY}/${IMAGE}@${DIGEST}"
             echo '```'
             echo
             echo "Pin the digest above; tags move."
