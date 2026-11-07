@@ -1,7 +1,12 @@
 # Hooks for prek (and pre-commit). Pin `rev:` to a commit SHA in the caller.
+#
+# check-instructions checks only the root AGENTS.md and SYSTEM.md, as the
+# action does by default. A nested AGENTS.md, for example from a vendored
+# dependency, has no `# SYSTEM.md` section. To check more files, set `files:`
+# in the caller's config.
 - id: check-instructions
   name: check agent instruction files
   description: Check AGENTS.md and SYSTEM.md against the agent instruction budget.
   entry: check-instructions/check-instructions.py
   language: script
-  files: (^|/)(AGENTS|SYSTEM)\.md$
+  files: ^(AGENTS|SYSTEM)\.md$
