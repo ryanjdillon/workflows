@@ -1,0 +1,7 @@
+# zizmor configuration. CI runs zizmor with zizmorcore/zizmor-action.
+rules:
+  # This audit wants the self-repository syntax (`uses: $/...`), but
+  # actionlint 1.7.12 rejects it. Turn the audit on again when actionlint
+  # accepts `$/`, and change each `uses: ./...` in the same PR.
+  self-repository:
+    disable: true
