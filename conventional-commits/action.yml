@@ -9,8 +9,13 @@ description: Check that the commit subjects of a pull request or a push, and the
 # The commits of the range must be in the clone. Check out with
 # `fetch-depth: 0`.
 #
+# Types and scopes are lowercase; stricter than Conventional Commits 1.0
+# rule 15.
+#
 # Inputs reach the shell through env, not ${{ }} interpolation, so a crafted
-# input or PR title cannot inject commands.
+# input or PR title cannot inject commands. Each value goes in the same
+# argument as its option (--title=VALUE), so a value that starts with `--`
+# is not read as an option.
 
 inputs:
   range:
@@ -18,13 +23,15 @@ inputs:
       A git revision range. Empty uses the event: base..head of a pull
       request, base..head of a merge group, or before..after of a push. For a
       push that makes a branch, or a force push, it uses
-      origin/<default branch>..after.
+      origin/<default branch>..after. When that range is empty, for example
+      after a force push to the default branch, it checks the pushed commit.
     default: ""
   types:
     description: >-
       The allowed types, separated by commas or spaces. Empty uses the script
       default: feat, fix, docs, style, refactor, perf, test, build, ci, chore,
-      revert.
+      revert. Types are lowercase; stricter than Conventional Commits 1.0
+      rule 15.
     default: ""
   scope-pattern:
     description: >-
@@ -37,7 +44,8 @@ inputs:
   allow-merge-commits:
     description: >-
       `true` does not check merge commits. Use it for a push to a branch that
-      gets merge commits from pull requests.
+      gets merge commits from pull requests, and for a merge queue that uses
+      the merge method.
     default: "false"
   allow-autosquash:
     description: "`true` accepts fixup!, squash!, and amend! commits."
@@ -48,7 +56,8 @@ inputs:
   check-pr-title:
     description: >-
       `true` also checks the title of the pull request. It has an effect only
-      for a pull_request event.
+      for an event that has a pull request, for example pull_request or
+      pull_request_target.
     default: "true"
 
 runs:
@@ -68,17 +77,17 @@ runs:
         SCRIPT: ${{ github.action_path }}/conventional-commits.py
       run: |
         if [ -n "$RANGE" ]; then
-          args=(--range "$RANGE")
+          args=("--range=$RANGE")
         else
-          args=(--github-event "$GITHUB_EVENT_PATH")
+          args=("--github-event=$GITHUB_EVENT_PATH")
         fi
-        if [ -n "$TYPES" ]; then args+=(--types "$TYPES"); fi
-        if [ -n "$SCOPE_PATTERN" ]; then args+=(--scope-pattern "$SCOPE_PATTERN"); fi
-        args+=(--max-length "${MAX_LENGTH:-72}")
+        if [ -n "$TYPES" ]; then args+=("--types=$TYPES"); fi
+        if [ -n "$SCOPE_PATTERN" ]; then args+=("--scope-pattern=$SCOPE_PATTERN"); fi
+        args+=("--max-length=${MAX_LENGTH:-72}")
         if [ "$ALLOW_MERGE_COMMITS" = true ]; then args+=(--allow-merge-commits); fi
         if [ "$ALLOW_AUTOSQUASH" = true ]; then args+=(--allow-autosquash); fi
         if [ "$ALLOW_GIT_REVERT" = true ]; then args+=(--allow-git-revert); fi
         if [ "$CHECK_PR_TITLE" = true ] && [ -n "$PR_TITLE" ]; then
-          args+=(--title "$PR_TITLE")
+          args+=("--title=$PR_TITLE")
         fi
         python3 "$SCRIPT" "${args[@]}"

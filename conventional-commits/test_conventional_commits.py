@@ -66,14 +66,15 @@ class SubjectTest(unittest.TestCase):
         for subject, expected in (
             ("Add a check", "not in the form"),
             ("feat add a check", "not in the form"),
-            ("Feat: add a check", "type 'Feat'"),
+            ("Feat: add a check", "type 'Feat' must be 'feat'; types and scopes"),
             ("feature: add a check", "type 'feature'"),
             ("feat:add a check", "one space"),
             ("feat:  add a check", "one space"),
             ("feat: ", "no description"),
             ("feat:", "no description"),
             ("feat(): add a check", "scope ''"),
-            ("feat(API): add a check", "scope 'API'"),
+            ("feat(API): add a check", "scope 'API' must be 'api'; types and scopes"),
+            ("feat(A B): add a check", "does not match"),
             ("feat(a b): add a check", "scope 'a b'"),
             ("feat!(api): add a check", "not in the form"),
             ("", "empty"),
@@ -137,6 +138,21 @@ class MessageTest(unittest.TestCase):
         self.assertEqual(errors("feat: x\n\nThe body.\n"), [])
         self.assertIn("blank line", errors("feat: x\nThe body.\n")[0])
 
+    def test_breaking_footer_only_in_the_footer_block(self) -> None:
+        text = "feat: x\n\nBREAKING CHANGE in prose is body text.\n\nRefs: 12\n"
+        self.assertEqual(errors(text), [])
+        text = "feat: x\n\nThe body.\n\nRefs: 12\nBREAKING CHANGE the input\n"
+        self.assertEqual(len(errors(text)), 1)
+
+    def test_lowercase_breaking_footer_warns(self) -> None:
+        message = cc.Message("msg", "feat: x\n\nbreaking change: the input\n")
+        self.assertEqual(cc.check_message(message, RULES), [])
+        warnings = cc.message_warnings(message)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("not uppercase", warnings[0])
+        upper = cc.Message("msg", "feat: x\n\nBREAKING CHANGE: the input\n")
+        self.assertEqual(cc.message_warnings(upper), [])
+
     def test_breaking_footer(self) -> None:
         self.assertEqual(errors("feat: x\n\nBREAKING CHANGE: the input is gone\n"), [])
         self.assertEqual(errors("feat: x\n\nBREAKING-CHANGE: the input is gone\n"), [])
@@ -153,8 +169,10 @@ class MessageTest(unittest.TestCase):
         self.assertEqual(errors("anything", allow, is_merge=True), [])
 
     def test_strip_comments(self) -> None:
-        text = f"\nfeat: x\n# a comment\n{cc.SCISSORS}\n+diff\n"
+        text = f"\nfeat: x\n# a comment\n#{cc.SCISSORS}\n+diff\n"
         self.assertEqual(cc.strip_comments(text), "feat: x")
+        text = f"feat: x\n; a comment\n#1 stays\n;{cc.SCISSORS}\n+diff\n"
+        self.assertEqual(cc.strip_comments(text, ";"), "feat: x\n#1 stays")
 
 
 class MainTest(unittest.TestCase):
@@ -237,6 +255,30 @@ class MainTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("PR title (Add x)", result.stderr)
 
+    def test_title_that_starts_with_dashes_is_a_value(self) -> None:
+        result = run(self.tmp, "--title=--allow-merge-commits")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("PR title (--allow-merge-commits)", result.stderr)
+
+    def test_range_that_starts_with_dashes_is_not_an_option(self) -> None:
+        self.init()
+        self.commit("feat: start")
+        result = run(self.tmp, "--range=--output=x")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cannot read the commits", result.stderr)
+        self.assertFalse((self.tmp / "x").exists())
+
+    def test_comment_char_from_git_config(self) -> None:
+        self.init()
+        self.git("config", "core.commentChar", ";")
+        path = self.tmp / "COMMIT_EDITMSG"
+        path.write_text("feat: x\n; Add a comment\n#1 is a fine body line\n")
+        result = run(self.tmp, str(path))
+        self.assertIn("blank line", result.stderr)
+        path.write_text("feat: x\n; Add a comment\n")
+        result = run(self.tmp, str(path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_title_with_range(self) -> None:
         self.init()
         base = self.commit("chore: start")
@@ -307,6 +349,57 @@ class MainTest(unittest.TestCase):
         self.assertIn(f"checking {after}^!", result.stdout)
         self.assertIn("checked 1 message", result.stdout)
 
+    def clone_with_main(self) -> Path:
+        remote = self.tmp / "remote"
+        remote.mkdir()
+        self.git("init", "-q", "-b", "main", cwd=remote)
+        self.git("commit", "-q", "--allow-empty", "-m", "Old history", cwd=remote)
+        self.git("commit", "-q", "--allow-empty", "-m", "Not conventional", cwd=remote)
+        clone = self.tmp / "clone"
+        self.git("clone", "-q", str(remote), str(clone))
+        return clone
+
+    def test_event_force_push_to_the_default_branch_checks_one_commit(self) -> None:
+        clone = self.clone_with_main()
+        after = self.git("rev-parse", "HEAD", cwd=clone)
+        payload = {
+            "ref": "refs/heads/main",
+            "before": "1" * 40,
+            "after": after,
+            "repository": {"default_branch": "main"},
+        }
+        result = run(clone, "--github-event", self.event(payload))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"checking {after}^!", result.stdout)
+        self.assertIn("(Not conventional)", result.stderr)
+        self.assertNotIn("Old history", result.stderr)
+
+    def test_event_empty_fallback_range_checks_one_commit(self) -> None:
+        clone = self.clone_with_main()
+        after = self.git("rev-parse", "HEAD", cwd=clone)
+        payload = {
+            "ref": "refs/heads/release",
+            "before": ZERO,
+            "after": after,
+            "repository": {"default_branch": "main"},
+        }
+        result = run(clone, "--github-event", self.event(payload))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"checking {after}^!", result.stdout)
+        self.assertIn("(Not conventional)", result.stderr)
+
+    def test_event_with_a_bad_commit_id_is_an_error(self) -> None:
+        for payload in (
+            {"before": ZERO, "after": "--output=x"},
+            {"before": "--output=x", "after": "1" * 40},
+            {"pull_request": {"base": {"sha": "HEAD"}, "head": {"sha": "1" * 40}}},
+            {"merge_group": {"base_sha": "1" * 40, "head_sha": 7}},
+        ):
+            with self.subTest(payload=payload):
+                result = run(self.tmp, "--github-event", self.event(payload))
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("where a commit id must be", result.stderr)
+
     def test_event_branch_delete_checks_nothing(self) -> None:
         event = self.event({"before": "1" * 40, "after": ZERO})
         result = run(self.tmp, "--github-event", event)
@@ -336,6 +429,7 @@ class MainTest(unittest.TestCase):
             ("--title", "feat: x", "--types", ","),
             ("--title", "feat: x", "--scope-pattern", "("),
             ("--title", "feat: x", "--max-length", "-1"),
+            ("--title", "feat: x", "--types", "feat,Fix"),
         ):
             with self.subTest(args=args):
                 self.assertEqual(run(self.tmp, *args).returncode, 2)
