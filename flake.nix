@@ -41,7 +41,7 @@
         check-process-noise = package pkgs "check-process-noise";
         check-commit-facts = package pkgs "check-commit-facts";
         check-skills = package pkgs "check-skills";
-        conventional-commits = package pkgs "conventional-commits";
+        check-conventional-commits = package pkgs "check-conventional-commits";
       });
 
       # For a consumer's flake `checks`:
@@ -105,13 +105,13 @@
       # Checks commit message files, and a PR title with
       # `args = [ "--title" title ]`. The Nix sandbox has no git history. To
       # check the commits of a branch, use the action or the prek hook.
-      lib.conventionalCommits =
+      lib.checkConventionalCommits =
         {
           pkgs,
           files ? [ ],
           args ? [ ],
         }:
-        flakeCheck "conventional-commits" {
+        flakeCheck "check-conventional-commits" {
           inherit pkgs;
           arguments = args ++ files;
         };
@@ -136,12 +136,12 @@
           inherit pkgs;
           roots = [ ./check-skills/testdata/pass/skills ];
         };
-        conventional-commits-adapter = self.lib.conventionalCommits {
+        check-conventional-commits-adapter = self.lib.checkConventionalCommits {
           inherit pkgs;
           files = [
-            ./conventional-commits/testdata/pass/breaking.txt
-            ./conventional-commits/testdata/pass/comments.txt
-            ./conventional-commits/testdata/pass/scope.txt
+            ./check-conventional-commits/testdata/pass/breaking.txt
+            ./check-conventional-commits/testdata/pass/comments.txt
+            ./check-conventional-commits/testdata/pass/scope.txt
           ];
         };
       });

@@ -1,3 +1,0 @@
-feat(conventional-commits): add a check for commit subjects
-
-The check reads each commit of a pull request or a push.

@@ -74,7 +74,7 @@ runs:
         ALLOW_GIT_REVERT: ${{ inputs.allow-git-revert }}
         CHECK_PR_TITLE: ${{ inputs.check-pr-title }}
         PR_TITLE: ${{ github.event.pull_request.title }}
-        SCRIPT: ${{ github.action_path }}/conventional-commits.py
+        SCRIPT: ${{ github.action_path }}/check-conventional-commits.py
       run: |
         if [ -n "$RANGE" ]; then
           args=("--range=$RANGE")

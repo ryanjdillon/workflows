@@ -10,7 +10,6 @@ on:
       - "**.nix"
       - flake.lock
       - check-*/**
-      - conventional-commits/**
       - .github/workflows/nix.yml
       - .github/workflows/nix-check.yml
       - .github/workflows/nix-devshell-check.yml
@@ -20,7 +19,6 @@ on:
       - "**.nix"
       - flake.lock
       - check-*/**
-      - conventional-commits/**
       - .github/workflows/nix.yml
       - .github/workflows/nix-check.yml
       - .github/workflows/nix-devshell-check.yml
@@ -41,7 +39,7 @@ jobs:
       command: |
         set -euo pipefail
         mkdir -p build/cache
-        for test in check-*/test_*.py conventional-commits/test_*.py; do
+        for test in check-*/test_*.py; do
           python3 -m unittest discover -s "$(dirname "$test")"
         done 2>&1 | tee build/unittest.log
         date -u >>build/cache/runs

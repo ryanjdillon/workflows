@@ -32,7 +32,7 @@ the same result.
 | [`check-process-noise`](check-process-noise/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkProcessNoise` |
 | [`check-commit-facts`](check-commit-facts/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkCommitFacts` |
 | [`check-skills`](check-skills/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkSkills` |
-| [`conventional-commits`](conventional-commits/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.conventionalCommits` |
+| [`check-conventional-commits`](check-conventional-commits/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkConventionalCommits` |
 
 ### `docker-build-push.yml`
 
@@ -280,7 +280,7 @@ defined only in [`check-skills.py`](check-skills/check-skills.py).
 The prek hook checks the root `skills`. To check other roots, set `args:`.
 With Nix: `workflows.lib.checkSkills { inherit pkgs; roots = [ ./skills ]; }`.
 
-### `conventional-commits`
+### `check-conventional-commits`
 
 Checks that each commit subject follows
 [Conventional Commits 1.0](https://www.conventionalcommits.org/en/v1.0.0/):
@@ -288,7 +288,7 @@ Checks that each commit subject follows
 follows the colon, and the description is not empty. A body starts after one
 blank line. A `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer is allowed. The
 defaults are defined only in
-[`conventional-commits.py`](conventional-commits/conventional-commits.py):
+[`check-conventional-commits.py`](check-conventional-commits/check-conventional-commits.py):
 
 - The types `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
   `build`, `ci`, `chore`, and `revert`.
@@ -330,14 +330,14 @@ on:
     types: [opened, synchronize, reopened, edited]
 
 jobs:
-  conventional-commits:
+  check-conventional-commits:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@<sha> # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: ryanjdillon/workflows/conventional-commits@<sha> # v1.2.0
+      - uses: ryanjdillon/workflows/check-conventional-commits@<sha> # v1.2.0
 ```
 
 | Input | Default | Use |
@@ -378,14 +378,14 @@ commits and squash them before the merge, add `--allow-autosquash` to
   - repo: https://github.com/ryanjdillon/workflows
     rev: <sha> # frozen: v1.2.0
     hooks:
-      - id: conventional-commits
+      - id: check-conventional-commits
         args: [--types, "feat,fix,docs,chore"]
 ```
 
-With Nix, `workflows.lib.conventionalCommits` checks message files, and a
+With Nix, `workflows.lib.checkConventionalCommits` checks message files, and a
 title with `args = [ "--title" title ]`. The sandbox has no git history, so
 use the action or the hook to check a branch. To check a range one time:
-`nix run github:ryanjdillon/workflows#conventional-commits -- --range origin/main..HEAD`.
+`nix run github:ryanjdillon/workflows#check-conventional-commits -- --range origin/main..HEAD`.
 
 ## Conventions
 
