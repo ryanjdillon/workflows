@@ -295,6 +295,15 @@ defaults are defined only in
 - The scope pattern `[a-z0-9._/-]+`.
 - A subject of 72 characters or less.
 
+Types and scopes are lowercase. This is stricter than Conventional Commits
+1.0 rule 15, which lets a type have any case. A custom scope pattern sets
+the case of the scope.
+
+Only the last paragraph of the message is the footer block. A
+`BREAKING CHANGE` line there must be `BREAKING CHANGE: <description>`. A
+`breaking change:` footer in lowercase gives a warning, not a failure:
+tools read only the uppercase token.
+
 By default, the check also rejects these commits:
 
 - A merge commit. In a range, a commit with two or more parents is a merge
@@ -334,30 +343,34 @@ jobs:
 | Input | Default | Use |
 | --- | --- | --- |
 | `range` | empty | A git revision range. Empty uses the event (see below). |
-| `types` | empty | The allowed types, separated by commas or spaces. Empty uses the default types. |
+| `types` | empty | The allowed types, lowercase, separated by commas or spaces. Empty uses the default types. |
 | `scope-pattern` | empty | A regex that the whole scope must match. Empty uses the default. |
 | `max-length` | `72` | The subject length limit. `0` turns it off. |
 | `allow-merge-commits` | `false` | `true` does not check merge commits. |
 | `allow-autosquash` | `false` | `true` accepts `fixup!`, `squash!`, and `amend!` commits. |
 | `allow-git-revert` | `false` | `true` accepts `Revert "..."`. |
-| `check-pr-title` | `true` | Also check the PR title. It has an effect only for a `pull_request` event. |
+| `check-pr-title` | `true` | Also check the PR title. It has an effect only for an event that has a pull request, for example `pull_request` or `pull_request_target`. |
 
 With an empty `range`, the action reads the event. A pull request gives
 `base..head`, a merge group gives `base_sha..head_sha`, and a push gives
 `before..after`. For a push that makes a branch, or a force push whose
 `before` commit is not in the clone, the action checks
-`origin/<default branch>..after`. A push that deletes a branch has no
-commits to check. The commits must be in the clone, so set
+`origin/<default branch>..after`. When that range is empty, or the push
+is a force push to the default branch, the action checks only the pushed
+commit (`after`). A push that deletes a branch has no commits to check. The commits must be in the clone, so set
 `fetch-depth: 0`.
 
 A push to a branch that gets merge commits from pull requests has those
 merge commits. For that push, set
 `allow-merge-commits: ${{ github.event_name == 'push' }}`, or run the check
-only on pull requests.
+only on pull requests. A merge queue that uses the merge method also makes
+a merge commit in the group, so set `allow-merge-commits: true` for the
+`merge_group` event too.
 
 With prek, the hook runs in the `commit-msg` stage. Install that hook type
 one time in each clone: `prek install --hook-type commit-msg`. The hook also
-runs for `git merge`, and rejects the merge commit. If you make `fixup!`
+runs for `git merge`, and rejects the merge commit. It removes the comment
+lines that start with `core.commentChar` (default `#`). If you make `fixup!`
 commits and squash them before the merge, add `--allow-autosquash` to
 `args:`. CI still rejects them.
 
