@@ -20,6 +20,7 @@ sys.modules[spec.name] = facts
 spec.loader.exec_module(facts)
 
 PARTS = [re.compile(source) for source in facts.PART_PATTERNS]
+MEMORY = re.compile(facts.MEMORY_PATTERN, re.IGNORECASE)
 GIT_ENV = {
     **os.environ,
     "GIT_AUTHOR_NAME": "test",
@@ -29,8 +30,8 @@ GIT_ENV = {
 }
 
 
-def errors(text: str, patterns=PARTS) -> list[str]:
-    return facts.check_message(facts.Message("msg", text), patterns)
+def errors(text: str, patterns=PARTS, memory=MEMORY) -> list[str]:
+    return facts.check_message(facts.Message("msg", text), patterns, memory)
 
 
 def run(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -59,6 +60,11 @@ class CheckMessageTest(unittest.TestCase):
 
     def test_from_memory_fails_with_a_source(self) -> None:
         self.assertEqual(len(errors("Set R1\n\nSource: From memory\n")), 1)
+
+    def test_memory_pattern_is_an_input(self) -> None:
+        self.assertEqual(errors("Set R1 from memory\n", memory=None), [])
+        guess = re.compile(r"\bguess\b")
+        self.assertEqual(len(errors("A guess for R1\n", memory=guess)), 1)
 
     def test_patterns_replace_the_default(self) -> None:
         patterns = [re.compile(r"\bLM\d{3}\b")]
@@ -112,6 +118,11 @@ class MainTest(unittest.TestCase):
         result = run(self.tmp, "--range", f"{base}..HEAD")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("checked 1 commit message", result.stdout)
+
+    def test_empty_memory_pattern_turns_the_check_off(self) -> None:
+        path = HERE / "testdata/fail/from-memory.txt"
+        result = run(self.tmp, "--memory-pattern", "", str(path))
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_files_and_range_together_is_an_error(self) -> None:
         result = run(self.tmp, "--range", "a..b", "msg.txt")

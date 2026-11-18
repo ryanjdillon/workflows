@@ -16,10 +16,19 @@ inputs:
   range:
     description: >-
       A git revision range. Empty uses the event: base..head of a pull request,
-      or before..after of a push.
+      or before..after of a push. For a push that makes a branch, or a force
+      push, it uses origin/<default branch>..after.
     default: ""
   patterns:
-    description: Regexes for a part number, one on each line. They replace the script default. Empty uses the default.
+    description: >-
+      Regexes for a part number, one on each line. They replace the script
+      default, an LCSC number for the owner's hardware repos. Empty uses the
+      default.
+    default: ""
+  memory-pattern:
+    description: >-
+      Regex for a fact with no source. Empty uses the script default
+      ("from memory"). `none` turns the check off.
     default: ""
 
 runs:
@@ -29,26 +38,48 @@ runs:
       env:
         RANGE: ${{ inputs.range }}
         PATTERNS: ${{ inputs.patterns }}
+        MEMORY_PATTERN: ${{ inputs.memory-pattern }}
         PR_BASE: ${{ github.event.pull_request.base.sha }}
         PR_HEAD: ${{ github.event.pull_request.head.sha }}
         PUSH_BEFORE: ${{ github.event.before }}
         PUSH_AFTER: ${{ github.event.after }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         SCRIPT: ${{ github.action_path }}/check-commit-facts.py
       run: |
         if [ -z "$RANGE" ]; then
           if [ -n "$PR_BASE" ]; then
             RANGE="$PR_BASE..$PR_HEAD"
-          elif [ -n "$PUSH_AFTER" ] && [ -n "${PUSH_BEFORE//0/}" ]; then
-            RANGE="$PUSH_BEFORE..$PUSH_AFTER"
           elif [ -n "$PUSH_AFTER" ]; then
-            # A push that makes a new branch has no "before" commit.
-            RANGE="$PUSH_AFTER^!"
+            if [ -n "${PUSH_BEFORE//0/}" ] && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+              RANGE="$PUSH_BEFORE..$PUSH_AFTER"
+            else
+              # A push that makes a branch has no "before" commit. After a
+              # force push, the "before" commit is not in the clone. Then
+              # check the commits that the default branch does not have.
+              if [ -n "${PUSH_BEFORE//0/}" ]; then
+                reason="the commit before the push is not in the clone"
+              else
+                reason="the push makes a new branch"
+              fi
+              if [ -n "$DEFAULT_BRANCH" ] \
+                && git rev-parse -q --verify "origin/$DEFAULT_BRANCH^{commit}" >/dev/null; then
+                RANGE="origin/$DEFAULT_BRANCH..$PUSH_AFTER"
+              else
+                RANGE="$PUSH_AFTER^!"
+              fi
+              echo "check-commit-facts: $reason; checking $RANGE"
+            fi
           else
             echo "error: this event gives no commit range; set the range input" >&2
             exit 1
           fi
         fi
         args=(--range "$RANGE")
+        if [ "$MEMORY_PATTERN" = none ]; then
+          args+=(--memory-pattern "")
+        elif [ -n "$MEMORY_PATTERN" ]; then
+          args+=(--memory-pattern "$MEMORY_PATTERN")
+        fi
         while IFS= read -r pattern; do
           if [ -n "$pattern" ]; then args+=(--pattern "$pattern"); fi
         done <<<"$PATTERNS"

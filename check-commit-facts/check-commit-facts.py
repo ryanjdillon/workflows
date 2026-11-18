@@ -7,7 +7,8 @@ line. A message that says a fact is "from memory" fails.
 
 Standalone by design: stdlib only, so the GitHub Action, the prek hook, and
 the Nix package in this repo all run this one file. This file is the only
-definition of the default patterns.
+definition of the default patterns. The defaults suit the owner's hardware
+and agent repos; other callers give their own patterns.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from pathlib import Path
 # An LCSC part number: the letter C and 3 to 8 digits.
 PART_PATTERNS = (r"\bC\d{3,8}\b",)
 SOURCE_RE = re.compile(r"^Source:\s*\S", re.MULTILINE)
-MEMORY_RE = re.compile(r"\bfrom memory\b", re.IGNORECASE)
+MEMORY_PATTERN = r"\bfrom memory\b"
 # git puts the diff under this line with `commit --verbose`.
 SCISSORS = "# ------------------------ >8 ------------------------"
 
@@ -39,7 +40,11 @@ def strip_comments(text: str) -> str:
     return "\n".join(line for line in text.splitlines() if not line.startswith("#"))
 
 
-def check_message(message: Message, part_patterns: list[re.Pattern[str]]) -> list[str]:
+def check_message(
+    message: Message,
+    part_patterns: list[re.Pattern[str]],
+    memory: re.Pattern[str] | None = None,
+) -> list[str]:
     errors: list[str] = []
     subject = message.text.strip().splitlines()[0] if message.text.strip() else ""
     where = f"{message.name} ({subject})" if subject else message.name
@@ -56,7 +61,8 @@ def check_message(message: Message, part_patterns: list[re.Pattern[str]]) -> lis
             f"{where}: names {', '.join(parts)} with no 'Source:' line;"
             " add a line that names the datasheet or page it came from"
         )
-    for found in MEMORY_RE.finditer(message.text):
+    found_memory = memory.finditer(message.text) if memory else ()
+    for found in found_memory:
         errors.append(
             f"{where}: says {found.group(0)!r}; read the fact from a source and name it"
         )
@@ -109,11 +115,20 @@ def main(argv: list[str] | None = None) -> int:
         dest="patterns",
         help=f"regex for a part number; replaces the default ({' '.join(PART_PATTERNS)})",
     )
+    parser.add_argument(
+        "--memory-pattern",
+        default=MEMORY_PATTERN,
+        help="regex for a fact with no source; empty turns it off"
+        f" (default: {MEMORY_PATTERN})",
+    )
     args = parser.parse_args(argv)
 
     if bool(args.files) == bool(args.revision_range):
         parser.error("give commit message files, or --range, but not both")
 
+    memory = (
+        re.compile(args.memory_pattern, re.IGNORECASE) if args.memory_pattern else None
+    )
     part_patterns = [
         re.compile(source)
         for source in (PART_PATTERNS if args.patterns is None else args.patterns)
@@ -128,7 +143,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     errors = [
-        error for message in messages for error in check_message(message, part_patterns)
+        error
+        for message in messages
+        for error in check_message(message, part_patterns, memory)
     ]
     for error in errors:
         print(f"error: {error}", file=sys.stderr)

@@ -216,8 +216,13 @@ The Nix sandbox has no git, so give the files.
 Checks the commit messages. A message that names a part number must have a
 `Source:` line that names the datasheet or the page. A message that says
 "from memory" fails. The default part number pattern is an LCSC number
-(`\bC\d{3,8}\b`). It is defined only in
+(`\bC\d{3,8}\b`). The default patterns are defined only in
 [`check-commit-facts.py`](check-commit-facts/check-commit-facts.py).
+
+The defaults suit the owner's hardware and agent repos. The default part
+number pattern also matches other tokens, for example the reference
+designator `C100`. In another repo, set your own part number patterns and
+memory pattern.
 
 In GitHub Actions, check out the full history, then check the commits of the
 pull request or the push:
@@ -231,8 +236,10 @@ pull request or the push:
 ```
 
 Inputs: `range` (default: `base..head` of the pull request, or
-`before..after` of the push), and `patterns` (one regex on each line; they
-replace the default).
+`before..after` of the push), `patterns` (one regex on each line; they
+replace the default), and `memory-pattern` (`none` turns it off). For a push
+that makes a branch, or a force push whose `before` commit is not in the
+clone, the action checks `origin/<default branch>..after`.
 
 With prek, the hook runs in the `commit-msg` stage. Install that hook type
 one time in each clone: `prek install --hook-type commit-msg`.
