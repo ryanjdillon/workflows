@@ -30,6 +30,7 @@ the same result.
 | [`check-instructions`](check-instructions/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkInstructions` |
 | [`check-process-noise`](check-process-noise/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkProcessNoise` |
 | [`check-commit-facts`](check-commit-facts/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkCommitFacts` |
+| [`check-skills`](check-skills/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkSkills` |
 
 ### `docker-build-push.yml`
 
@@ -204,6 +205,22 @@ one time in each clone: `prek install --hook-type commit-msg`.
 
 With Nix, `workflows.lib.checkCommitFacts` checks message files. The sandbox
 has no git history, so use the action or the hook to check a branch.
+
+### `check-skills`
+
+Validates the frontmatter of each `SKILL.md` under the skill roots. The
+frontmatter is flat: only the keys `name` and `description`, each on one line,
+with a plain YAML scalar. The `name` matches the directory. The rules are
+defined only in [`check-skills.py`](check-skills/check-skills.py).
+
+```yaml
+- uses: ryanjdillon/workflows/check-skills@<sha> # v1.1.0
+  with:
+    roots: skills
+```
+
+The prek hook checks the root `skills`. To check other roots, set `args:`.
+With Nix: `workflows.lib.checkSkills { inherit pkgs; roots = [ ./skills ]; }`.
 
 ## Conventions
 

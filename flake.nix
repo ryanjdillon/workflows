@@ -40,6 +40,7 @@
         check-instructions = package pkgs "check-instructions";
         check-process-noise = package pkgs "check-process-noise";
         check-commit-facts = package pkgs "check-commit-facts";
+        check-skills = package pkgs "check-skills";
       });
 
       # For a consumer's flake `checks`:
@@ -86,6 +87,20 @@
           arguments = args ++ files;
         };
 
+      #   skills = workflows.lib.checkSkills {
+      #     inherit pkgs; roots = [ ./skills ];
+      #   };
+      lib.checkSkills =
+        {
+          pkgs,
+          roots,
+          args ? [ ],
+        }:
+        flakeCheck "check-skills" {
+          inherit pkgs;
+          arguments = args ++ roots;
+        };
+
       checks = forAllSystems (pkgs: {
         check-instructions-adapter = self.lib.checkInstructions {
           inherit pkgs;
@@ -101,6 +116,10 @@
             ./check-commit-facts/testdata/pass/no-part.txt
             ./check-commit-facts/testdata/pass/sourced.txt
           ];
+        };
+        check-skills-adapter = self.lib.checkSkills {
+          inherit pkgs;
+          roots = [ ./check-skills/testdata/pass/skills ];
         };
       });
 

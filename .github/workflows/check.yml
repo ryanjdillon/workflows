@@ -141,6 +141,43 @@ jobs:
       - name: Hook
         run: check-commit-facts/test-hook.sh
 
+  check-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s check-skills
+
+      - name: Action passes on good skills
+        uses: ./check-skills
+        with:
+          roots: check-skills/testdata/pass/skills
+
+      - name: Action fails on bad skills
+        id: bad
+        continue-on-error: true
+        uses: ./check-skills
+        with:
+          roots: check-skills/testdata/fail/skills
+
+      - name: The bad skills failed
+        env:
+          BAD: ${{ steps.bad.outcome }}
+        run: |
+          [ "$BAD" = failure ] || { echo "error: bad skills passed" >&2; exit 1; }
+
+      # See the check-instructions job for the prek version.
+      - uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
+        with:
+          prek-version: latest-known
+          install-only: true
+
+      - name: Hook
+        run: check-skills/test-hook.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:

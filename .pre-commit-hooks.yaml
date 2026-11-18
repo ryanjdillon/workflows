@@ -29,3 +29,13 @@
   entry: check-commit-facts/check-commit-facts.py
   language: script
   stages: [commit-msg]
+
+# check-skills checks the skill roots, not the changed files. The default
+# root is `skills`. To check other roots, set `args:` in the caller's config.
+- id: check-skills
+  name: check skill frontmatter
+  description: Validate the frontmatter of each SKILL.md under the skill roots.
+  entry: check-skills/check-skills.py
+  language: script
+  files: (^|/)SKILL\.md$
+  pass_filenames: false
