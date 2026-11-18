@@ -1,0 +1,5 @@
+feat(api)!: remove the v1 endpoints
+
+The v1 endpoints had no callers.
+
+BREAKING CHANGE: the v1 endpoints are removed

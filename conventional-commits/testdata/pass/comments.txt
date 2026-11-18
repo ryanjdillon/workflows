@@ -1,0 +1,6 @@
+fix: read the message after git removes the comments
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored.
+# ------------------------ >8 ------------------------
+Merge branch 'main'
