@@ -1,0 +1,26 @@
+name: check skills
+description: Validate the frontmatter of each SKILL.md under the skill roots.
+
+# A composite action, not a reusable workflow: it runs as a step in the
+# caller's job, so it starts no extra runner, and github.action_path gives the
+# script at the same ref the caller pinned. Needs python3 on the runner, which
+# ubuntu-latest has.
+#
+# Inputs reach the shell through env, not ${{ }} interpolation, so a crafted
+# input cannot inject commands.
+
+inputs:
+  roots:
+    description: Space-separated directories that hold the skills, relative to the working directory.
+    default: skills
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        ROOTS: ${{ inputs.roots }}
+        SCRIPT: ${{ github.action_path }}/check-skills.py
+      run: |
+        read -ra roots <<<"$ROOTS"
+        python3 "$SCRIPT" "${roots[@]}"

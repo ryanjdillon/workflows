@@ -1,0 +1,133 @@
+name: nix devshell check
+
+# Run a check command in the caller's flake devshell. Use it only in a repo
+# whose toolchain exists only in Nix, for example a CAD or EDA toolchain that
+# has no setup action. Other repos run CI without Nix, and use nix-check.yml
+# for changes to Nix files.
+#
+# The job caches the Nix store, keyed on the Nix files, and the directories
+# that the devshell builds, keyed on the files that the caller names. It can
+# upload files that the command writes, also when the command fails.
+#
+# Third-party actions are pinned by commit SHA: a tag is mutable.
+
+on:
+  workflow_call:
+    inputs:
+      command:
+        description: The command to run in the devshell.
+        default: make check
+        type: string
+      cache-paths:
+        description: Directories to cache, one on each line, for example .venv. Empty caches no directory.
+        default: ""
+        type: string
+      cache-key-files:
+        description: >-
+          Space-separated globs of the files that define the cache-paths
+          contents, for example `requirements.lock flake.lock`. Needed when
+          cache-paths is set. `**` matches directories.
+        default: ""
+        type: string
+      artifact-name:
+        description: The name of the artifact.
+        default: check-output
+        type: string
+      artifact-paths:
+        description: Files or directories to upload, one on each line. Empty uploads nothing.
+        default: ""
+        type: string
+      nix-cache:
+        description: Cache the Nix store in the GitHub Actions cache.
+        default: true
+        type: boolean
+      gc-max-store-size:
+        description: >-
+          Before a new store cache is saved, collect garbage until the store
+          is this size or has no garbage.
+        default: 1G
+        type: string
+      timeout-minutes:
+        description: Cancel the job after this time. A caller job that uses a reusable workflow cannot set it.
+        default: 60
+        type: number
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      # The command runs with `nix develop --profile`, which makes the devshell
+      # a garbage collection root. Thus the garbage collection before a save
+      # removes old closures, and keeps the devshell.
+      - if: inputs.nix-cache
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: ${{ inputs.gc-max-store-size }}
+
+      # Values reach the shell through env, not ${{ }} interpolation, so a
+      # crafted input cannot inject commands.
+      - name: Cache key
+        id: key
+        if: inputs.cache-paths != ''
+        env:
+          CACHE_PATHS: ${{ inputs.cache-paths }}
+          KEY_FILES: ${{ inputs.cache-key-files }}
+        run: |
+          shopt -s globstar nullglob
+          read -ra globs <<<"$KEY_FILES"
+          files=()
+          for glob in "${globs[@]}"; do
+            # Unquoted, so that the shell expands the glob. A name with no
+            # glob character stays when the file does not exist.
+            # shellcheck disable=SC2086
+            for file in $glob; do
+              if [ -f "$file" ]; then files+=("$file"); fi
+            done
+          done
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "error: cache-key-files matches no file; set it when cache-paths is set" >&2
+            exit 1
+          fi
+          # The prefix identifies the cached paths. The restore key is the
+          # prefix, so a change to the key files restores the newest cache of
+          # the same paths.
+          paths_hash="$(printf '%s\n' "$CACHE_PATHS" | sha256sum | cut -c1-16)"
+          files_hash="$(
+            printf '%s\0' "${files[@]}" | sort -zu | xargs -0 sha256sum \
+              | sha256sum | cut -c1-32
+          )"
+          prefix="devshell-$RUNNER_OS-$paths_hash-"
+          {
+            echo "prefix=$prefix"
+            echo "key=$prefix$files_hash"
+          } >>"$GITHUB_OUTPUT"
+
+      - if: inputs.cache-paths != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ inputs.cache-paths }}
+          key: ${{ steps.key.outputs.key }}
+          restore-keys: ${{ steps.key.outputs.prefix }}
+
+      - name: Check
+        env:
+          COMMAND: ${{ inputs.command }}
+        run: nix develop --profile "$RUNNER_TEMP/devshell" --command bash -c "$COMMAND"
+
+      - if: always() && inputs.artifact-paths != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-paths }}
+          if-no-files-found: warn

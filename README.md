@@ -18,6 +18,7 @@ including private repositories, with no extra configuration.
 |---|---|
 | [`docker-build-push.yml`](.github/workflows/docker-build-push.yml) | Build a Dockerfile and push it to GHCR using the automatic `GITHUB_TOKEN` |
 | [`nix-check.yml`](.github/workflows/nix-check.yml) | Run `nix flake check`; callers start it only for changes to Nix files |
+| [`nix-devshell-check.yml`](.github/workflows/nix-devshell-check.yml) | Run a check command in the caller's flake devshell, for a toolchain that exists only in Nix |
 
 ## Shared checks
 
@@ -28,6 +29,9 @@ the same result.
 | Check | GitHub Actions | prek (or pre-commit) | Nix |
 |---|---|---|---|
 | [`check-instructions`](check-instructions/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkInstructions` |
+| [`check-process-noise`](check-process-noise/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkProcessNoise` |
+| [`check-commit-facts`](check-commit-facts/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkCommitFacts` |
+| [`check-skills`](check-skills/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkSkills` |
 
 ### `docker-build-push.yml`
 
@@ -82,6 +86,51 @@ Input: `command` (default `nix flake check`).
 Do not make this check a required status check. When the path filter skips
 the workflow, a required check stays pending, and the PR cannot merge.
 
+### `nix-devshell-check.yml`
+
+Use this workflow only when the toolchain exists only in Nix, for example a
+CAD or EDA toolchain that has no setup action. Other repos run CI without
+Nix (see `docs/ci-and-checks.md` of `ryanjdillon/agents`).
+
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ryanjdillon/workflows/.github/workflows/nix-devshell-check.yml@<sha> # v1.1.0
+    with:
+      command: make check
+      cache-paths: ~/.cache/my-tool
+      cache-key-files: requirements.lock flake.lock
+      artifact-name: check-output
+      artifact-paths: |
+        build/
+```
+
+| Input | Default | Use |
+| --- | --- | --- |
+| `command` | `make check` | The command. It runs with `nix develop --command bash -c`. |
+| `cache-paths` | empty | Directories to cache, one on each line. |
+| `cache-key-files` | empty | Space-separated globs. Their contents give the key of the `cache-paths` cache. Needed when `cache-paths` is set. |
+| `artifact-name` | `check-output` | The name of the artifact. |
+| `artifact-paths` | empty | Files or directories to upload, one on each line. The upload also runs when the command fails. |
+| `nix-cache` | `true` | Cache the Nix store. The key is the hash of the `*.nix` files and `flake.lock`. |
+| `gc-max-store-size` | `1G` | Before a new store cache is saved, collect garbage until the store is this size or has no garbage. |
+| `timeout-minutes` | `60` | Cancel the job after this time. |
+
+The workflow installs Nix with `cachix/install-nix-action`, and caches the
+store with `nix-community/cache-nix-action`. Before it saves a new store
+cache, it collects the garbage. The devshell is a garbage collection root, so
+the cache keeps the devshell and drops old closures.
+
+When the key files change, the `cache-paths` cache restores the newest cache
+for the same `cache-paths`, and saves a new one with the new key. Thus a tool
+that keys its own directories on the same files can reuse what did not change.
+
+Cache the real directory, not a symlink to it. `actions/cache` stores a
+symlink as a symlink.
+
 ### `check-instructions`
 
 Checks `AGENTS.md` and `SYSTEM.md` files against the agent instruction budget.
@@ -126,6 +175,109 @@ checks.${system}.instructions = workflows.lib.checkInstructions {
 ```
 
 Or run it once: `nix run github:ryanjdillon/workflows#check-instructions -- AGENTS.md`.
+
+### `check-process-noise`
+
+Finds issue ids and review-process words in source comments and docstrings.
+A comment tells why the code is as it is. The issue and the review history
+go in the commit message and the PR. The default patterns are defined only
+in [`check-process-noise.py`](check-process-noise/check-process-noise.py):
+an issue id (`\bDIL-\d+\b`), and the words `blocker`, `should-fix`,
+`finding N`, `re-review`, `hand-back`, and `reviewer`.
+
+The defaults suit the owner's hardware and agent repos: their issue ids, and
+the words of their agent review process. In another repo, set your own issue
+pattern and words.
+
+The check reads Python comments with `tokenize`, and docstrings with `ast`. A
+string that is not a docstring does not match. For shell, Nix, YAML, TOML,
+and C-family files, it reads only the lines that start with the comment
+marker. For another file type, it fails.
+
+In GitHub Actions:
+
+```yaml
+- uses: ryanjdillon/workflows/check-process-noise@<sha> # v1.1.0
+  with:
+    exclude: "tests/fixtures/*"
+```
+
+Inputs: `files` (default: the tracked files that match `globs`), `globs`
+(default `*.py`), `exclude`, `issue-pattern`, and `patterns` (one regex on
+each line; they replace the default words). It needs `python3` and `git` on
+the runner.
+
+With prek:
+
+```yaml
+  - repo: https://github.com/ryanjdillon/workflows
+    rev: <sha> # frozen: v1.1.0
+    hooks:
+      - id: check-process-noise
+        args: [--issue-pattern, '\bABC-\d+\b']
+```
+
+With Nix: `workflows.lib.checkProcessNoise { inherit pkgs; files = [ ./src/main.py ]; }`.
+The Nix sandbox has no git, so give the files.
+
+### `check-commit-facts`
+
+Checks the commit messages. A message that names a part number must have a
+`Source:` line that names the datasheet or the page. A message that says
+"from memory" fails. The default part number pattern is an LCSC number
+(`\bC\d{3,8}\b`). The default patterns are defined only in
+[`check-commit-facts.py`](check-commit-facts/check-commit-facts.py).
+
+The defaults suit the owner's hardware and agent repos. The default part
+number pattern also matches other tokens, for example the reference
+designator `C100`. In another repo, set your own part number patterns and
+memory pattern.
+
+In GitHub Actions, check out the full history, then check the commits of the
+pull request or the push:
+
+```yaml
+- uses: actions/checkout@<sha> # v7.0.1
+  with:
+    persist-credentials: false
+    fetch-depth: 0
+- uses: ryanjdillon/workflows/check-commit-facts@<sha> # v1.1.0
+```
+
+Inputs: `range` (default: `base..head` of the pull request, or
+`before..after` of the push), `patterns` (one regex on each line; they
+replace the default), and `memory-pattern` (`none` turns it off). For a push
+that makes a branch, or a force push whose `before` commit is not in the
+clone, the action checks `origin/<default branch>..after`.
+
+With prek, the hook runs in the `commit-msg` stage. Install that hook type
+one time in each clone: `prek install --hook-type commit-msg`.
+
+```yaml
+  - repo: https://github.com/ryanjdillon/workflows
+    rev: <sha> # frozen: v1.1.0
+    hooks:
+      - id: check-commit-facts
+```
+
+With Nix, `workflows.lib.checkCommitFacts` checks message files. The sandbox
+has no git history, so use the action or the hook to check a branch.
+
+### `check-skills`
+
+Validates the frontmatter of each `SKILL.md` under the skill roots. The
+frontmatter is flat: only the keys `name` and `description`, each on one line,
+with a plain YAML scalar. The `name` matches the directory. The rules are
+defined only in [`check-skills.py`](check-skills/check-skills.py).
+
+```yaml
+- uses: ryanjdillon/workflows/check-skills@<sha> # v1.1.0
+  with:
+    roots: skills
+```
+
+The prek hook checks the root `skills`. To check other roots, set `args:`.
+With Nix: `workflows.lib.checkSkills { inherit pkgs; roots = [ ./skills ]; }`.
 
 ## Conventions
 
@@ -203,10 +355,15 @@ that has a `renovate.json`.
 
 CI (`.github/workflows/check.yml`) runs each adapter of each shared check on
 its test data, in `<check>/testdata/`. It also makes sure that the bad test
-data fails. `nix.yml` runs `nix-check.yml` from this checkout, so the Nix
-adapter and the reusable workflow are tested before they merge.
+data fails. `nix.yml` runs `nix-check.yml` and `nix-devshell-check.yml` from this
+checkout, so the Nix adapter and the reusable workflows are tested before
+they merge.
 
-To test the prek hook on your machine: `check-instructions/test-hook.sh`.
+To test on your machine:
+
+- The unit tests: `python3 -m unittest discover -s <check>`.
+- The prek hook: `<check>/test-hook.sh`. `prek try-repo` copies only the
+  tracked files, so stage a new file before you test it.
 
 ## Gotchas
 
