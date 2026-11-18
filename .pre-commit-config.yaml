@@ -8,3 +8,9 @@ repos:
         entry: check-instructions/check-instructions.py
         language: script
         files: ^(AGENTS|SYSTEM)\.md$
+      - id: check-process-noise
+        name: check comments for process noise
+        entry: check-process-noise/check-process-noise.py
+        language: script
+        types: [python]
+        exclude: /testdata/

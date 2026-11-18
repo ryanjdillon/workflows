@@ -13,10 +13,14 @@ tells callers how to use them.
 ## Common commands
 
 ```bash
-check-instructions/test-hook.sh   # test the prek hook (needs prek)
-nix flake check                   # test the Nix adapter
+python3 -m unittest discover -s <check>   # unit tests of a check
+<check>/test-hook.sh                      # test the prek hook (needs prek)
+nix flake check                           # test the Nix adapter
 nix fmt
 ```
+
+`prek try-repo` copies only the tracked files. Stage a new file before you
+run `test-hook.sh`.
 
 CI (`.github/workflows/check.yml`) also tests the action, and runs
 actionlint, zizmor, and ruff.
@@ -37,7 +41,7 @@ actionlint, zizmor, and ruff.
 
 | When you change | Also update |
 | --- | --- |
-| A check's script or its limits | Its test data in `<check>/testdata/` |
+| A check's script or its limits | Its test data in `<check>/testdata/`, and its unit tests |
 | A check's inputs or default files | The action, the hook, the flake, and the README, together |
 | A workflow's inputs or outputs | The README section of that workflow |
 | A workflow or an action | Run actionlint and zizmor |

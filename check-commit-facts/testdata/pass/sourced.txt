@@ -1,0 +1,5 @@
+Use C0000 for the I2C pull-ups
+
+The module has no pull-ups.
+
+Source: the example datasheet, table 3

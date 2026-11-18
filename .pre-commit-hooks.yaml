@@ -10,3 +10,22 @@
   entry: check-instructions/check-instructions.py
   language: script
   files: ^(AGENTS|SYSTEM)\.md$
+
+# check-process-noise checks the staged Python files. To check other file
+# types, set `types_or:` in the caller's config. To change the patterns, set
+# `args:`.
+- id: check-process-noise
+  name: check comments for process noise
+  description: Find issue ids and review-process words in source comments and docstrings.
+  entry: check-process-noise/check-process-noise.py
+  language: script
+  types: [python]
+
+# check-commit-facts runs on the commit message. Install the hook type one
+# time in each clone: `prek install --hook-type commit-msg`.
+- id: check-commit-facts
+  name: check commit message facts
+  description: Check that a commit message names a source for the part numbers it states.
+  entry: check-commit-facts/check-commit-facts.py
+  language: script
+  stages: [commit-msg]

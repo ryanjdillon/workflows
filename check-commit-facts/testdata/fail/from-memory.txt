@@ -1,0 +1,3 @@
+Set the I2C pull-ups to 4.7k
+
+The value is from memory.

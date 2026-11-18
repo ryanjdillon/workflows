@@ -28,6 +28,8 @@ the same result.
 | Check | GitHub Actions | prek (or pre-commit) | Nix |
 |---|---|---|---|
 | [`check-instructions`](check-instructions/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkInstructions` |
+| [`check-process-noise`](check-process-noise/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkProcessNoise` |
+| [`check-commit-facts`](check-commit-facts/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkCommitFacts` |
 
 ### `docker-build-push.yml`
 
@@ -127,6 +129,82 @@ checks.${system}.instructions = workflows.lib.checkInstructions {
 
 Or run it once: `nix run github:ryanjdillon/workflows#check-instructions -- AGENTS.md`.
 
+### `check-process-noise`
+
+Finds issue ids and review-process words in source comments and docstrings.
+A comment tells why the code is as it is. The issue and the review history
+go in the commit message and the PR. The default patterns are defined only
+in [`check-process-noise.py`](check-process-noise/check-process-noise.py):
+an issue id (`\bDIL-\d+\b`), and the words `blocker`, `should-fix`,
+`finding N`, `re-review`, `hand-back`, and `reviewer`.
+
+The check reads Python comments with `tokenize`, and docstrings with `ast`. A
+string that is not a docstring does not match. For shell, Nix, YAML, TOML,
+and C-family files, it reads only the lines that start with the comment
+marker. For another file type, it fails.
+
+In GitHub Actions:
+
+```yaml
+- uses: ryanjdillon/workflows/check-process-noise@<sha> # v1.1.0
+  with:
+    exclude: "tests/fixtures/*"
+```
+
+Inputs: `files` (default: the tracked files that match `globs`), `globs`
+(default `*.py`), `exclude`, `issue-pattern`, and `patterns` (one regex on
+each line; they replace the default words). It needs `python3` and `git` on
+the runner.
+
+With prek:
+
+```yaml
+  - repo: https://github.com/ryanjdillon/workflows
+    rev: <sha> # frozen: v1.1.0
+    hooks:
+      - id: check-process-noise
+        args: [--issue-pattern, '\bABC-\d+\b']
+```
+
+With Nix: `workflows.lib.checkProcessNoise { inherit pkgs; files = [ ./src/main.py ]; }`.
+The Nix sandbox has no git, so give the files.
+
+### `check-commit-facts`
+
+Checks the commit messages. A message that names a part number must have a
+`Source:` line that names the datasheet or the page. A message that says
+"from memory" fails. The default part number pattern is an LCSC number
+(`\bC\d{3,8}\b`). It is defined only in
+[`check-commit-facts.py`](check-commit-facts/check-commit-facts.py).
+
+In GitHub Actions, check out the full history, then check the commits of the
+pull request or the push:
+
+```yaml
+- uses: actions/checkout@<sha> # v7.0.1
+  with:
+    persist-credentials: false
+    fetch-depth: 0
+- uses: ryanjdillon/workflows/check-commit-facts@<sha> # v1.1.0
+```
+
+Inputs: `range` (default: `base..head` of the pull request, or
+`before..after` of the push), and `patterns` (one regex on each line; they
+replace the default).
+
+With prek, the hook runs in the `commit-msg` stage. Install that hook type
+one time in each clone: `prek install --hook-type commit-msg`.
+
+```yaml
+  - repo: https://github.com/ryanjdillon/workflows
+    rev: <sha> # frozen: v1.1.0
+    hooks:
+      - id: check-commit-facts
+```
+
+With Nix, `workflows.lib.checkCommitFacts` checks message files. The sandbox
+has no git history, so use the action or the hook to check a branch.
+
 ## Conventions
 
 - **Third-party actions are pinned by commit SHA**, with the version in a
@@ -206,7 +284,11 @@ its test data, in `<check>/testdata/`. It also makes sure that the bad test
 data fails. `nix.yml` runs `nix-check.yml` from this checkout, so the Nix
 adapter and the reusable workflow are tested before they merge.
 
-To test the prek hook on your machine: `check-instructions/test-hook.sh`.
+To test on your machine:
+
+- The unit tests: `python3 -m unittest discover -s <check>`.
+- The prek hook: `<check>/test-hook.sh`. `prek try-repo` copies only the
+  tracked files, so stage a new file before you test it.
 
 ## Gotchas
 

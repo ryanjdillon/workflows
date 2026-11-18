@@ -1,0 +1,51 @@
+name: check process noise
+description: Find issue ids and review-process words in source comments and docstrings.
+
+# A composite action, not a reusable workflow: it runs as a step in the
+# caller's job, so it starts no extra runner, and github.action_path gives the
+# script at the same ref the caller pinned. Needs python3 and git on the
+# runner, which ubuntu-latest has.
+#
+# Inputs reach the shell through env, not ${{ }} interpolation, so a crafted
+# input cannot inject commands.
+
+inputs:
+  files:
+    description: Space-separated files to check. Empty checks the tracked files that match `globs`.
+    default: ""
+  globs:
+    description: Space-separated git pathspecs for the tracked files. Empty uses the script default (*.py).
+    default: ""
+  exclude:
+    description: Space-separated fnmatch patterns. The check skips the tracked files that match one.
+    default: ""
+  issue-pattern:
+    description: Regex for an issue id. Empty uses the script default.
+    default: ""
+  patterns:
+    description: Regexes for review-process words, one on each line. They replace the script defaults. Empty uses the defaults.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        FILES: ${{ inputs.files }}
+        GLOBS: ${{ inputs.globs }}
+        EXCLUDE: ${{ inputs.exclude }}
+        ISSUE_PATTERN: ${{ inputs.issue-pattern }}
+        PATTERNS: ${{ inputs.patterns }}
+        SCRIPT: ${{ github.action_path }}/check-process-noise.py
+      run: |
+        args=()
+        read -ra globs <<<"$GLOBS"
+        for glob in "${globs[@]}"; do args+=(--glob "$glob"); done
+        read -ra excludes <<<"$EXCLUDE"
+        for exclude in "${excludes[@]}"; do args+=(--exclude "$exclude"); done
+        if [ -n "$ISSUE_PATTERN" ]; then args+=(--issue-pattern "$ISSUE_PATTERN"); fi
+        while IFS= read -r pattern; do
+          if [ -n "$pattern" ]; then args+=(--pattern "$pattern"); fi
+        done <<<"$PATTERNS"
+        read -ra files <<<"$FILES"
+        python3 "$SCRIPT" "${args[@]}" "${files[@]}"
