@@ -32,6 +32,7 @@ the same result.
 | [`check-process-noise`](check-process-noise/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkProcessNoise` |
 | [`check-commit-facts`](check-commit-facts/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkCommitFacts` |
 | [`check-skills`](check-skills/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkSkills` |
+| [`conventional-commits`](conventional-commits/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.conventionalCommits` |
 
 ### `docker-build-push.yml`
 
@@ -278,6 +279,100 @@ defined only in [`check-skills.py`](check-skills/check-skills.py).
 
 The prek hook checks the root `skills`. To check other roots, set `args:`.
 With Nix: `workflows.lib.checkSkills { inherit pkgs; roots = [ ./skills ]; }`.
+
+### `conventional-commits`
+
+Checks that each commit subject follows
+[Conventional Commits 1.0](https://www.conventionalcommits.org/en/v1.0.0/):
+`type(scope)!: description`. The scope and the `!` are optional. One space
+follows the colon, and the description is not empty. A body starts after one
+blank line. A `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer is allowed. The
+defaults are defined only in
+[`conventional-commits.py`](conventional-commits/conventional-commits.py):
+
+- The types `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
+  `build`, `ci`, `chore`, and `revert`.
+- The scope pattern `[a-z0-9._/-]+`.
+- A subject of 72 characters or less.
+
+By default, the check also rejects these commits:
+
+- A merge commit. In a range, a commit with two or more parents is a merge
+  commit. In a message file or a title, a subject such as `Merge branch` or
+  `Merge pull request` is a merge commit.
+- A `fixup!`, `squash!`, or `amend!` commit. Squash it before the merge.
+- The revert subject that git writes, `Revert "feat: x"`. Write
+  `revert: feat: x` instead.
+
+An option allows each of them.
+
+When a repo merges pull requests with **rebase**, the commits of the pull
+request go on `main` as they are. Then this check on the pull request
+guards the history of `main`. When a repo merges with **squash**, the PR
+title becomes the subject on `main`, so the action also checks the title.
+
+In GitHub Actions, check out the full history, then check the commits of the
+pull request or the push:
+
+```yaml
+on:
+  pull_request:
+    # `edited` runs the check again when the title changes.
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  conventional-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<sha> # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ryanjdillon/workflows/conventional-commits@<sha> # v1.2.0
+```
+
+| Input | Default | Use |
+| --- | --- | --- |
+| `range` | empty | A git revision range. Empty uses the event (see below). |
+| `types` | empty | The allowed types, separated by commas or spaces. Empty uses the default types. |
+| `scope-pattern` | empty | A regex that the whole scope must match. Empty uses the default. |
+| `max-length` | `72` | The subject length limit. `0` turns it off. |
+| `allow-merge-commits` | `false` | `true` does not check merge commits. |
+| `allow-autosquash` | `false` | `true` accepts `fixup!`, `squash!`, and `amend!` commits. |
+| `allow-git-revert` | `false` | `true` accepts `Revert "..."`. |
+| `check-pr-title` | `true` | Also check the PR title. It has an effect only for a `pull_request` event. |
+
+With an empty `range`, the action reads the event. A pull request gives
+`base..head`, a merge group gives `base_sha..head_sha`, and a push gives
+`before..after`. For a push that makes a branch, or a force push whose
+`before` commit is not in the clone, the action checks
+`origin/<default branch>..after`. A push that deletes a branch has no
+commits to check. The commits must be in the clone, so set
+`fetch-depth: 0`.
+
+A push to a branch that gets merge commits from pull requests has those
+merge commits. For that push, set
+`allow-merge-commits: ${{ github.event_name == 'push' }}`, or run the check
+only on pull requests.
+
+With prek, the hook runs in the `commit-msg` stage. Install that hook type
+one time in each clone: `prek install --hook-type commit-msg`. The hook also
+runs for `git merge`, and rejects the merge commit. If you make `fixup!`
+commits and squash them before the merge, add `--allow-autosquash` to
+`args:`. CI still rejects them.
+
+```yaml
+  - repo: https://github.com/ryanjdillon/workflows
+    rev: <sha> # frozen: v1.2.0
+    hooks:
+      - id: conventional-commits
+        args: [--types, "feat,fix,docs,chore"]
+```
+
+With Nix, `workflows.lib.conventionalCommits` checks message files, and a
+title with `args = [ "--title" title ]`. The sandbox has no git history, so
+use the action or the hook to check a branch. To check a range one time:
+`nix run github:ryanjdillon/workflows#conventional-commits -- --range origin/main..HEAD`.
 
 ## Conventions
 
