@@ -1,8 +1,8 @@
 name: nix
 
-# Run nix-check.yml from this checkout, so a change to it is tested before it
-# merges. The paths also include the checks, because the flake's checks run
-# the Nix adapter on their test data.
+# Run nix-check.yml and nix-devshell-check.yml from this checkout, so a change
+# to them is tested before it merges. The paths also include the checks,
+# because the flake's checks run the Nix adapter on their test data.
 
 on:
   pull_request:
@@ -12,6 +12,7 @@ on:
       - check-*/**
       - .github/workflows/nix.yml
       - .github/workflows/nix-check.yml
+      - .github/workflows/nix-devshell-check.yml
   push:
     branches: [main]
     paths:
@@ -20,6 +21,7 @@ on:
       - check-*/**
       - .github/workflows/nix.yml
       - .github/workflows/nix-check.yml
+      - .github/workflows/nix-devshell-check.yml
 
 permissions:
   contents: read
@@ -27,3 +29,23 @@ permissions:
 jobs:
   nix:
     uses: ./.github/workflows/nix-check.yml
+
+  # Runs the unit tests in this repo's devshell. The command writes a file
+  # into the cached directory and the artifact, so that a run shows that the
+  # cache and the upload work.
+  devshell:
+    uses: ./.github/workflows/nix-devshell-check.yml
+    with:
+      command: |
+        set -euo pipefail
+        mkdir -p build/cache
+        for test in check-*/test_*.py; do
+          python3 -m unittest discover -s "$(dirname "$test")"
+        done 2>&1 | tee build/unittest.log
+        date -u >>build/cache/runs
+      cache-paths: build/cache
+      cache-key-files: flake.lock
+      artifact-name: devshell-test
+      artifact-paths: |
+        build/unittest.log
+        build/cache/runs

@@ -18,6 +18,7 @@ including private repositories, with no extra configuration.
 |---|---|
 | [`docker-build-push.yml`](.github/workflows/docker-build-push.yml) | Build a Dockerfile and push it to GHCR using the automatic `GITHUB_TOKEN` |
 | [`nix-check.yml`](.github/workflows/nix-check.yml) | Run `nix flake check`; callers start it only for changes to Nix files |
+| [`nix-devshell-check.yml`](.github/workflows/nix-devshell-check.yml) | Run a check command in the caller's flake devshell, for a toolchain that exists only in Nix |
 
 ## Shared checks
 
@@ -84,6 +85,45 @@ Input: `command` (default `nix flake check`).
 
 Do not make this check a required status check. When the path filter skips
 the workflow, a required check stays pending, and the PR cannot merge.
+
+### `nix-devshell-check.yml`
+
+Use this workflow only when the toolchain exists only in Nix, for example a
+CAD or EDA toolchain that has no setup action. Other repos run CI without
+Nix (see `docs/ci-and-checks.md` of `ryanjdillon/agents`).
+
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ryanjdillon/workflows/.github/workflows/nix-devshell-check.yml@<sha> # v1.1.0
+    with:
+      command: make check
+      cache-paths: ~/.cache/my-tool
+      cache-key-files: requirements.lock flake.lock
+      artifact-name: check-output
+      artifact-paths: |
+        build/
+```
+
+| Input | Default | Use |
+| --- | --- | --- |
+| `command` | `make check` | The command. It runs with `nix develop --command bash -c`. |
+| `cache-paths` | empty | Directories to cache, one on each line. |
+| `cache-key-files` | empty | Space-separated globs. Their contents give the key of the `cache-paths` cache. Needed when `cache-paths` is set. |
+| `artifact-name` | `check-output` | The name of the artifact. |
+| `artifact-paths` | empty | Files or directories to upload, one on each line. The upload also runs when the command fails. |
+| `nix-cache` | `true` | Cache the Nix store. The key is the hash of the `*.nix` files and `flake.lock`. |
+
+The workflow installs Nix with `cachix/install-nix-action`, and caches the
+store with `nix-community/cache-nix-action`. Before it saves a new store
+cache, it collects the garbage. The devshell is a garbage collection root, so
+the cache keeps the devshell and drops old closures.
+
+Cache the real directory, not a symlink to it. `actions/cache` stores a
+symlink as a symlink.
 
 ### `check-instructions`
 
@@ -298,8 +338,9 @@ that has a `renovate.json`.
 
 CI (`.github/workflows/check.yml`) runs each adapter of each shared check on
 its test data, in `<check>/testdata/`. It also makes sure that the bad test
-data fails. `nix.yml` runs `nix-check.yml` from this checkout, so the Nix
-adapter and the reusable workflow are tested before they merge.
+data fails. `nix.yml` runs `nix-check.yml` and `nix-devshell-check.yml` from this
+checkout, so the Nix adapter and the reusable workflows are tested before
+they merge.
 
 To test on your machine:
 

@@ -23,7 +23,7 @@ nix fmt
 run `test-hook.sh`.
 
 CI (`.github/workflows/check.yml`) also tests the action, and runs
-actionlint, zizmor, and ruff.
+actionlint, zizmor, and ruff. `nix.yml` tests the reusable Nix workflows.
 
 ## Invariants
 

@@ -123,6 +123,17 @@
         };
       });
 
+      # Only the toolchain and the hook runner. CI pins the other tools.
+      # nix.yml tests nix-devshell-check.yml in this shell.
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          packages = [
+            pkgs.python3
+            pkgs.prek
+          ];
+        };
+      });
+
       formatter = forAllSystems (pkgs: pkgs.nixfmt);
     };
 }
