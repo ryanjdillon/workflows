@@ -178,6 +178,56 @@ jobs:
       - name: Hook
         run: check-skills/test-hook.sh
 
+  conventional-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The action reads each commit of the range.
+          fetch-depth: 0
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s conventional-commits
+
+      # A push to main has the merge commit of the pull request. The pull
+      # request has no merge commits.
+      - name: This change's commits and the PR title
+        uses: ./conventional-commits
+        with:
+          allow-merge-commits: ${{ github.event_name == 'push' }}
+
+      # This range is the merge commit of pull request #16.
+      - name: Action fails on a merge commit
+        id: merge
+        continue-on-error: true
+        uses: ./conventional-commits
+        with:
+          range: da9dcca0713460e006ac81365674eff1f227c9d9^!
+          check-pr-title: "false"
+
+      - name: Action accepts a merge commit when the caller allows it
+        uses: ./conventional-commits
+        with:
+          range: da9dcca0713460e006ac81365674eff1f227c9d9^!
+          check-pr-title: "false"
+          allow-merge-commits: "true"
+
+      - name: The merge commit failed
+        env:
+          MERGE: ${{ steps.merge.outcome }}
+        run: |
+          [ "$MERGE" = failure ] || { echo "error: the merge commit passed" >&2; exit 1; }
+
+      # See the check-instructions job for the prek version.
+      - uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
+        with:
+          prek-version: latest-known
+          install-only: true
+
+      - name: Hook
+        run: conventional-commits/test-hook.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:
