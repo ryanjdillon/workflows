@@ -1,0 +1,84 @@
+name: conventional commits
+description: Check that the commit subjects of a pull request or a push, and the PR title, follow Conventional Commits.
+
+# A composite action, not a reusable workflow: it runs as a step in the
+# caller's job, so it starts no extra runner, and github.action_path gives the
+# script at the same ref the caller pinned. Needs python3 and git on the
+# runner, which ubuntu-latest has.
+#
+# The commits of the range must be in the clone. Check out with
+# `fetch-depth: 0`.
+#
+# Inputs reach the shell through env, not ${{ }} interpolation, so a crafted
+# input or PR title cannot inject commands.
+
+inputs:
+  range:
+    description: >-
+      A git revision range. Empty uses the event: base..head of a pull
+      request, base..head of a merge group, or before..after of a push. For a
+      push that makes a branch, or a force push, it uses
+      origin/<default branch>..after.
+    default: ""
+  types:
+    description: >-
+      The allowed types, separated by commas or spaces. Empty uses the script
+      default: feat, fix, docs, style, refactor, perf, test, build, ci, chore,
+      revert.
+    default: ""
+  scope-pattern:
+    description: >-
+      A regex that the whole scope must match. Empty uses the script default,
+      [a-z0-9._/-]+.
+    default: ""
+  max-length:
+    description: The subject length limit. 0 turns it off.
+    default: "72"
+  allow-merge-commits:
+    description: >-
+      `true` does not check merge commits. Use it for a push to a branch that
+      gets merge commits from pull requests.
+    default: "false"
+  allow-autosquash:
+    description: "`true` accepts fixup!, squash!, and amend! commits."
+    default: "false"
+  allow-git-revert:
+    description: '`true` accepts the revert subject that git writes: Revert "...".'
+    default: "false"
+  check-pr-title:
+    description: >-
+      `true` also checks the title of the pull request. It has an effect only
+      for a pull_request event.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        RANGE: ${{ inputs.range }}
+        TYPES: ${{ inputs.types }}
+        SCOPE_PATTERN: ${{ inputs.scope-pattern }}
+        MAX_LENGTH: ${{ inputs.max-length }}
+        ALLOW_MERGE_COMMITS: ${{ inputs.allow-merge-commits }}
+        ALLOW_AUTOSQUASH: ${{ inputs.allow-autosquash }}
+        ALLOW_GIT_REVERT: ${{ inputs.allow-git-revert }}
+        CHECK_PR_TITLE: ${{ inputs.check-pr-title }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        SCRIPT: ${{ github.action_path }}/conventional-commits.py
+      run: |
+        if [ -n "$RANGE" ]; then
+          args=(--range "$RANGE")
+        else
+          args=(--github-event "$GITHUB_EVENT_PATH")
+        fi
+        if [ -n "$TYPES" ]; then args+=(--types "$TYPES"); fi
+        if [ -n "$SCOPE_PATTERN" ]; then args+=(--scope-pattern "$SCOPE_PATTERN"); fi
+        args+=(--max-length "${MAX_LENGTH:-72}")
+        if [ "$ALLOW_MERGE_COMMITS" = true ]; then args+=(--allow-merge-commits); fi
+        if [ "$ALLOW_AUTOSQUASH" = true ]; then args+=(--allow-autosquash); fi
+        if [ "$ALLOW_GIT_REVERT" = true ]; then args+=(--allow-git-revert); fi
+        if [ "$CHECK_PR_TITLE" = true ] && [ -n "$PR_TITLE" ]; then
+          args+=(--title "$PR_TITLE")
+        fi
+        python3 "$SCRIPT" "${args[@]}"
