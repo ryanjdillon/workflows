@@ -92,6 +92,12 @@ class CheckFileTest(unittest.TestCase):
     def test_makefile_is_known(self) -> None:
         self.assertEqual(self.words("Makefile", "# blocker\n"), [(1, "blocker")])
 
+    def test_byte_order_mark_is_accepted(self) -> None:
+        path = self.tmp / "bom.py"
+        path.write_bytes('\ufeff"""Text."""\n# blocker\n'.encode())
+        words = [(match.line, match.word) for match in noise.check_file(path, DEFAULTS)]
+        self.assertEqual(words, [(2, "blocker")])
+
     def test_unknown_file_type_is_an_error(self) -> None:
         path = write(self.tmp, "notes.txt", "blocker\n")
         with self.assertRaises(noise.UnknownSyntax):

@@ -7,7 +7,8 @@ the code, and it becomes wrong when the process moves on.
 
 Standalone by design: stdlib only, so the GitHub Action, the prek hook, and
 the Nix package in this repo all run this one file. This file is the only
-definition of the default patterns.
+definition of the default patterns. The defaults suit the owner's hardware
+and agent repos; other callers give their own patterns.
 """
 
 from __future__ import annotations
@@ -113,7 +114,8 @@ def texts(path: Path, source: str) -> Iterator[Text]:
 
 
 def check_file(path: Path, patterns: list[re.Pattern[str]]) -> list[Match]:
-    source = path.read_text(encoding="utf-8")
+    # utf-8-sig: an editor can write a byte order mark, which ast rejects.
+    source = path.read_text(encoding="utf-8-sig")
     matches: list[Match] = []
     for text in texts(path, source):
         for pattern in patterns:

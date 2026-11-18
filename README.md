@@ -180,6 +180,10 @@ in [`check-process-noise.py`](check-process-noise/check-process-noise.py):
 an issue id (`\bDIL-\d+\b`), and the words `blocker`, `should-fix`,
 `finding N`, `re-review`, `hand-back`, and `reviewer`.
 
+The defaults suit the owner's hardware and agent repos: their issue ids, and
+the words of their agent review process. In another repo, set your own issue
+pattern and words.
+
 The check reads Python comments with `tokenize`, and docstrings with `ast`. A
 string that is not a docstring does not match. For shell, Nix, YAML, TOML,
 and C-family files, it reads only the lines that start with the comment

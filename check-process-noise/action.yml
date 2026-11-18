@@ -20,10 +20,15 @@ inputs:
     description: Space-separated fnmatch patterns. The check skips the tracked files that match one.
     default: ""
   issue-pattern:
-    description: Regex for an issue id. Empty uses the script default.
+    description: >-
+      Regex for an issue id. Empty uses the script default, which matches the
+      issue ids of the owner's repos. Set your own.
     default: ""
   patterns:
-    description: Regexes for review-process words, one on each line. They replace the script defaults. Empty uses the defaults.
+    description: >-
+      Regexes for review-process words, one on each line. They replace the
+      script defaults, the words of the owner's agent review process. Empty
+      uses the defaults.
     default: ""
 
 runs:
