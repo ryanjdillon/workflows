@@ -1,4 +1,4 @@
-"""Tests for conventional-commits.py. Run: python3 -m unittest discover -s conventional-commits"""
+"""Tests for check-conventional-commits.py. Run: python3 -m unittest discover -s check-conventional-commits"""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SCRIPT = HERE / "conventional-commits.py"
+SCRIPT = HERE / "check-conventional-commits.py"
 
-spec = importlib.util.spec_from_file_location("conventional_commits", SCRIPT)
+spec = importlib.util.spec_from_file_location("check_conventional_commits", SCRIPT)
 cc = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = cc
 spec.loader.exec_module(cc)

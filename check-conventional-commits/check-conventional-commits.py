@@ -408,9 +408,9 @@ def main(argv: list[str] | None = None) -> int:
             event = json.loads(args.github_event.read_text(encoding="utf-8"))
             revision_range, note = event_range(event)
             if revision_range is None:
-                print(f"conventional-commits: {note}; no commits to check")
+                print(f"check-conventional-commits: {note}; no commits to check")
             else:
-                print(f"conventional-commits: {note}; checking {revision_range}")
+                print(f"check-conventional-commits: {note}; checking {revision_range}")
         if revision_range:
             messages = range_messages(revision_range)
         elif args.files:
@@ -440,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
     if errors:
         print(
-            f"conventional-commits: {len(errors)} problem(s);"
+            f"check-conventional-commits: {len(errors)} problem(s);"
             " see https://www.conventionalcommits.org/en/v1.0.0/",
             file=sys.stderr,
         )

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test the prek hook of conventional-commits. Needs prek and git.
+# Test the prek hook of check-conventional-commits. Needs prek and git.
 #
 # The hook runs from this checkout with `prek try-repo`, in the commit-msg
 # stage, on each message in testdata/. Each message in pass/ must pass. Each
@@ -17,7 +17,7 @@ git -C "$scratch" init -q
 
 run_hook() {
   cp "$1" "$scratch/COMMIT_EDITMSG"
-  (cd "$scratch" && prek try-repo "$repo" conventional-commits \
+  (cd "$scratch" && prek try-repo "$repo" check-conventional-commits \
     --stage commit-msg --commit-msg-filename COMMIT_EDITMSG)
 }
 

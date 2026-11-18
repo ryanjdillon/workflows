@@ -178,7 +178,7 @@ jobs:
       - name: Hook
         run: check-skills/test-hook.sh
 
-  conventional-commits:
+  check-conventional-commits:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -188,12 +188,12 @@ jobs:
           fetch-depth: 0
 
       - name: Unit tests
-        run: python3 -m unittest discover -s conventional-commits
+        run: python3 -m unittest discover -s check-conventional-commits
 
       # A push to main has the merge commit of the pull request. The pull
       # request has no merge commits.
       - name: This change's commits and the PR title
-        uses: ./conventional-commits
+        uses: ./check-conventional-commits
         with:
           allow-merge-commits: ${{ github.event_name == 'push' }}
 
@@ -201,13 +201,13 @@ jobs:
       - name: Action fails on a merge commit
         id: merge
         continue-on-error: true
-        uses: ./conventional-commits
+        uses: ./check-conventional-commits
         with:
           range: da9dcca0713460e006ac81365674eff1f227c9d9^!
           check-pr-title: "false"
 
       - name: Action accepts a merge commit when the caller allows it
-        uses: ./conventional-commits
+        uses: ./check-conventional-commits
         with:
           range: da9dcca0713460e006ac81365674eff1f227c9d9^!
           check-pr-title: "false"
@@ -226,7 +226,7 @@ jobs:
           install-only: true
 
       - name: Hook
-        run: conventional-commits/test-hook.sh
+        run: check-conventional-commits/test-hook.sh
 
   lint:
     runs-on: ubuntu-latest

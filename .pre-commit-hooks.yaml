@@ -40,13 +40,13 @@
   files: (^|/)SKILL\.md$
   pass_filenames: false
 
-# conventional-commits runs on the commit message. Install the hook type one
+# check-conventional-commits runs on the commit message. Install the hook type one
 # time in each clone: `prek install --hook-type commit-msg`. To make fixup!
 # commits that you squash before the merge, set
 # `args: [--allow-autosquash]` in the caller's config.
-- id: conventional-commits
+- id: check-conventional-commits
   name: check conventional commit subject
   description: Check that the commit subject follows Conventional Commits 1.0.
-  entry: conventional-commits/conventional-commits.py
+  entry: check-conventional-commits/check-conventional-commits.py
   language: script
   stages: [commit-msg]
