@@ -41,6 +41,12 @@ on:
         description: Cache the Nix store in the GitHub Actions cache.
         default: true
         type: boolean
+      gc-max-store-size:
+        description: >-
+          Before a new store cache is saved, collect garbage until the store
+          is this size or has no garbage.
+        default: 1G
+        type: string
       timeout-minutes:
         description: Cancel the job after this time. A caller job that uses a reusable workflow cannot set it.
         default: 60
@@ -67,7 +73,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 1G
+          gc-max-store-size-linux: ${{ inputs.gc-max-store-size }}
 
       # Values reach the shell through env, not ${{ }} interpolation, so a
       # crafted input cannot inject commands.
@@ -93,19 +99,26 @@ jobs:
             echo "error: cache-key-files matches no file; set it when cache-paths is set" >&2
             exit 1
           fi
-          hash="$(
-            {
-              printf '%s\n' "$CACHE_PATHS"
-              printf '%s\0' "${files[@]}" | sort -zu | xargs -0 sha256sum
-            } | sha256sum | cut -c1-32
+          # The prefix identifies the cached paths. The restore key is the
+          # prefix, so a change to the key files restores the newest cache of
+          # the same paths.
+          paths_hash="$(printf '%s\n' "$CACHE_PATHS" | sha256sum | cut -c1-16)"
+          files_hash="$(
+            printf '%s\0' "${files[@]}" | sort -zu | xargs -0 sha256sum \
+              | sha256sum | cut -c1-32
           )"
-          echo "key=devshell-$RUNNER_OS-$hash" >>"$GITHUB_OUTPUT"
+          prefix="devshell-$RUNNER_OS-$paths_hash-"
+          {
+            echo "prefix=$prefix"
+            echo "key=$prefix$files_hash"
+          } >>"$GITHUB_OUTPUT"
 
       - if: inputs.cache-paths != ''
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ inputs.cache-paths }}
           key: ${{ steps.key.outputs.key }}
+          restore-keys: ${{ steps.key.outputs.prefix }}
 
       - name: Check
         env:

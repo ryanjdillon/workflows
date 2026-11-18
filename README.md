@@ -116,12 +116,17 @@ jobs:
 | `artifact-name` | `check-output` | The name of the artifact. |
 | `artifact-paths` | empty | Files or directories to upload, one on each line. The upload also runs when the command fails. |
 | `nix-cache` | `true` | Cache the Nix store. The key is the hash of the `*.nix` files and `flake.lock`. |
+| `gc-max-store-size` | `1G` | Before a new store cache is saved, collect garbage until the store is this size or has no garbage. |
 | `timeout-minutes` | `60` | Cancel the job after this time. |
 
 The workflow installs Nix with `cachix/install-nix-action`, and caches the
 store with `nix-community/cache-nix-action`. Before it saves a new store
 cache, it collects the garbage. The devshell is a garbage collection root, so
 the cache keeps the devshell and drops old closures.
+
+When the key files change, the `cache-paths` cache restores the newest cache
+for the same `cache-paths`, and saves a new one with the new key. Thus a tool
+that keys its own directories on the same files can reuse what did not change.
 
 Cache the real directory, not a symlink to it. `actions/cache` stores a
 symlink as a symlink.
