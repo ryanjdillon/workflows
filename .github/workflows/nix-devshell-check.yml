@@ -41,10 +41,15 @@ on:
         description: Cache the Nix store in the GitHub Actions cache.
         default: true
         type: boolean
+      timeout-minutes:
+        description: Cancel the job after this time. A caller job that uses a reusable workflow cannot set it.
+        default: 60
+        type: number
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
     steps:

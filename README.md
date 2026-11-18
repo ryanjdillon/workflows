@@ -116,6 +116,7 @@ jobs:
 | `artifact-name` | `check-output` | The name of the artifact. |
 | `artifact-paths` | empty | Files or directories to upload, one on each line. The upload also runs when the command fails. |
 | `nix-cache` | `true` | Cache the Nix store. The key is the hash of the `*.nix` files and `flake.lock`. |
+| `timeout-minutes` | `60` | Cancel the job after this time. |
 
 The workflow installs Nix with `cachix/install-nix-action`, and caches the
 store with `nix-community/cache-nix-action`. Before it saves a new store
