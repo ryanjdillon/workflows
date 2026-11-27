@@ -93,7 +93,14 @@ jobs:
           # each image's build overwrites the cache of the image built before
           # it (docs.docker.com/build/cache/backends/gha, "Scope").
           cache-from: type=gha,scope=${{ inputs.image }}
-          cache-to: type=gha,mode=max,scope=${{ inputs.image }}
+          # Export the cache on the default branch only. A run restores caches
+          # of its own ref, the default branch and a pull request's base
+          # branch (docs.github.com, "Dependency caching", "Restrictions for
+          # accessing a cache"). So a cache that a pull request writes is read
+          # only by later runs of the same pull request, and a cache that a tag
+          # writes only by re-runs for that tag. The export can take most of
+          # the job, so on those builds it costs more than it saves.
+          cache-to: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && format('type=gha,mode=max,scope={0}', inputs.image) || '' }}
 
       # Values reach the shell through env, not ${{ }} interpolation, so a
       # crafted input cannot inject commands.
