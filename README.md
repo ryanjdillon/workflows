@@ -183,6 +183,10 @@ The scan depends on the event:
 - Other events, for example `schedule` and `workflow_dispatch`: Betterleaks
   scans the full history of the branch, and Semgrep scans the full tree.
 
+Semgrep runs the large rule sets (`python`, `javascript`, `typescript`, `go`
+and `dockerfile`) only when a target file has a file name of that language.
+On a 2-CPU runner, Semgrep takes most of its time to parse these rules.
+
 A Betterleaks finding fails the job. A Semgrep finding fails the job only
 when `semgrep-fail-on-findings` is `true`. The log and the summary show only
 the rule, the file and the line, never the matched text. To ignore a
