@@ -494,11 +494,13 @@ must match the pattern.
 
 A commit by an exempt author needs no trailer, for example a commit by the
 owner or by Renovate. The check compares the author name (`%an`) with each
-exempt name, exactly. By default, no author is exempt. Merge commits are not
-checked.
+exempt name: the exact name, case-sensitive. By default, no author is
+exempt. Merge commits are not checked.
 
-The author of a commit sets its author name. Thus the check finds a
-forgotten trailer. It is not a control against a malicious author.
+The check is hygiene, not enforcement. The author of a commit sets its
+author name, for example with `GIT_AUTHOR_NAME`. Thus an agent can give an
+exempt name. The check finds a forgotten trailer. It is not a control
+against a malicious author.
 
 In GitHub Actions, check out the full history, then check the commits of the
 pull request:
@@ -516,7 +518,11 @@ pull request:
       renovate[bot]
 ```
 
-Inputs: `range` (default: `base..head` of the pull request, or
+The action needs the full history: check out with `fetch-depth: 0`. In a
+shallow clone, the action and the script fail, because the range can hide
+commits.
+
+Inputs: `range` (default: `merge-base..head` of the pull request, or
 `before..after` of the push), `exempt-authors` (one name on each line),
 `key`, and `value-pattern`. For a push that makes a branch, or a force push
 whose `before` commit is not in the clone, the action checks
@@ -524,7 +530,8 @@ whose `before` commit is not in the clone, the action checks
 
 With prek, the hook runs in the `commit-msg` stage. Install that hook type
 one time in each clone: `prek install --hook-type commit-msg`. The hook
-reads the author of the new commit from git.
+reads the author of the new commit from git. It removes only the comment
+lines that start with `#`; it does not read `core.commentChar`.
 
 ```yaml
   - repo: https://github.com/ryanjdillon/workflows

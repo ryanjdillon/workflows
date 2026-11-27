@@ -173,6 +173,19 @@ class MainTest(unittest.TestCase):
         result = run(self.tmp, "--range", "a..b", "msg.txt")
         self.assertEqual(result.returncode, 2)
 
+    def test_shallow_clone_fails(self) -> None:
+        self.commit("Start", author=OWNER)
+        self.commit("feat: x\n\nPaperclip: PCL-1")
+        self.commit("feat: y\n\nPaperclip: PCL-2")
+        shallow = self.tmp / "shallow"
+        subprocess.run(
+            ["git", "clone", "-q", "--depth", "1", f"file://{self.tmp}", str(shallow)],
+            check=True,
+        )
+        result = run(shallow, "--range", "HEAD^!")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("shallow", result.stderr)
+
     def test_bad_range_is_an_error(self) -> None:
         result = run(self.tmp, "--range", "nothere..HEAD")
         self.assertEqual(result.returncode, 1)

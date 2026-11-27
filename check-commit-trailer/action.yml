@@ -17,7 +17,7 @@ description: "Check that each commit in a range has an issue trailer, for exampl
 inputs:
   range:
     description: >-
-      A git revision range. Empty uses the event: base..head of a pull request,
+      A git revision range. Empty uses the event: merge-base..head of a pull request,
       or before..after of a push. For a push that makes a branch, or a force
       push, it uses origin/<default branch>..after.
     default: ""
@@ -51,9 +51,19 @@ runs:
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         SCRIPT: ${{ github.action_path }}/check-commit-trailer.py
       run: |
+        if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+          echo "error: the clone is shallow; check out with fetch-depth: 0" >&2
+          exit 1
+        fi
         if [ -z "$RANGE" ]; then
           if [ -n "$PR_BASE" ]; then
-            RANGE="$PR_BASE..$PR_HEAD"
+            # From the merge base, so that a stale base.sha does not add the
+            # commits of the base branch to the range.
+            if ! merge_base="$(git merge-base "$PR_BASE" "$PR_HEAD")"; then
+              echo "error: no merge base of $PR_BASE and $PR_HEAD in the clone" >&2
+              exit 1
+            fi
+            RANGE="$merge_base..$PR_HEAD"
           elif [ -n "$PUSH_AFTER" ]; then
             if [ -n "${PUSH_BEFORE//0/}" ] && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
               RANGE="$PUSH_BEFORE..$PUSH_AFTER"
