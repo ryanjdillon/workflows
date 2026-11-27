@@ -161,7 +161,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A new push cancels the scan of the old PR head. A scheduled run and a
+  # manual run do not cancel each other.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   scan:
@@ -181,17 +183,27 @@ The scan depends on the event:
   merge base to the head. Semgrep reports only the new findings in the
   changed files (`--baseline-commit`).
 - Other events, for example `schedule` and `workflow_dispatch`: Betterleaks
-  scans the full history of the branch, and Semgrep scans the full tree.
+  scans the history of all the branches and tags, because a secret on a
+  stale branch is also a leak. Semgrep scans the full tree of the
+  checked-out commit.
 
-Semgrep runs the large rule sets (`python`, `javascript`, `typescript`, `go`
-and `dockerfile`) only when a target file has a file name of that language.
-On a 2-CPU runner, Semgrep takes most of its time to parse these rules.
+On a 2-CPU runner, Semgrep takes most of its time to parse the large rule
+sets: `python`, `javascript`, `typescript`, `go` and `dockerfile`. Thus the
+language rules of these directories run only when a target file has a file
+name of that language. A script with only a shebang and no extension does
+not match on a PR; the full scan finds it. The rule files of these
+directories for other files, for example templates, always run.
 
 A Betterleaks finding fails the job. A Semgrep finding fails the job only
 when `semgrep-fail-on-findings` is `true`. The log and the summary show only
 the rule, the file and the line, never the matched text. To ignore a
 Betterleaks finding, add its fingerprint to `.betterleaksignore` at the root
 of the repo.
+
+The author of a PR controls the suppression: `.betterleaksignore`,
+`betterleaks:allow` comments, the `betterleaks-config` file,
+`.semgrepignore` and `nosemgrep` comments. Thus the scan finds accidental
+leaks and mistakes. It is not a control against a malicious author.
 
 The workflow pins each tool:
 
@@ -205,8 +217,12 @@ The workflow pins each tool:
   internal use, and does not allow distribution. Thus this public repo does
   not copy the rules. Each run takes them from Semgrep's repo.
 
-Do not make this check a required status check until the weekly scan of the
-default branch passes.
+Do not make this check a required status check until the weekly scan
+passes.
+
+This repo runs the workflow on itself with `security.yml`. GitHub turns off
+the `schedule` trigger of a public repo after 60 days with no activity in
+the repo. Then turn the workflow on again in the Actions tab.
 
 ### `check-instructions`
 

@@ -7,9 +7,10 @@ name: security scan
 # The scan depends on the event of the caller:
 # - pull_request: Betterleaks scans only the commits of the PR, and Semgrep
 #   reports only the new findings in the changed files (--baseline-commit).
-# - any other event (schedule, workflow_dispatch): Betterleaks scans the full
-#   history of the checked-out branch, and Semgrep scans the full tree. The
-#   full history of a large repo takes seconds, so the tree-only mode of
+# - any other event (schedule, workflow_dispatch): Betterleaks scans the
+#   history of all the branches and tags, because a secret on a stale branch
+#   is also a leak. Semgrep scans the full tree of the checked-out commit.
+#   The full history of a large repo takes seconds, so the tree-only mode of
 #   Betterleaks is not necessary.
 #
 # A Betterleaks finding fails the job. A Semgrep finding fails the job only
@@ -63,6 +64,7 @@ permissions:
 
 jobs:
   scan:
+    name: security scan
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -95,7 +97,8 @@ jobs:
           path: src
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           # Both scans read the history: Betterleaks for the commits, and
-          # Semgrep for the baseline commit.
+          # Semgrep for the baseline commit. fetch-depth 0 also fetches all
+          # the branches and tags, which the full scan of Betterleaks reads.
           fetch-depth: 0
 
       # The rules are under the Semgrep Rules License v1.0
@@ -180,7 +183,7 @@ jobs:
             if [ "$MODE" = pr ]; then
               echo "Commits \`${BASE:0:12}..${HEAD:0:12}\`. Findings: ${count}."
             else
-              echo "Full history. Findings: ${count}."
+              echo "All branches and tags. Findings: ${count}."
             fi
             if [ "$status" != 0 ] && [ "$status" != 99 ]; then
               echo
@@ -217,10 +220,19 @@ jobs:
           fi
 
           # Semgrep parses all the rules before it scans, and the large rule
-          # sets take most of the time on a 2-CPU runner. Thus a rule set of
-          # one of these languages runs only when a target has its file
-          # name. The javascript rules also apply to TypeScript. The other
-          # rule sets are small, and always run.
+          # sets take most of the time on a 2-CPU runner. Thus the language
+          # rules of these directories run only when a target has a file
+          # name of that language. The javascript rules also apply to
+          # TypeScript. A script with only a shebang and no extension does
+          # not match; the full scan finds it.
+          #
+          # Some rule files in these directories are for other files, for
+          # example templates (*.html, *.ejs, *.pug, *.vue, *.tmpl), or any
+          # file. Their languages are generic, regex or yaml. These files
+          # always run. They are few, and fast to parse. The grep also finds
+          # the inline form "languages: [generic]". A false match only
+          # makes a file run always.
+          other_rules='^[[:space:]]*-[[:space:]]*(generic|regex|yaml)[[:space:]]*$|languages:[[:space:]]*\[[^]]*(generic|regex|yaml)'
           configs=()
           while IFS= read -r dir; do
             dir="${dir//[[:space:]]/}"
@@ -234,11 +246,18 @@ jobs:
               javascript) pattern='\.([cm]?js|jsx|[cm]?ts|tsx)$' ;;
               typescript) pattern='\.([cm]?ts|tsx)$' ;;
               go) pattern='\.go$' ;;
-              dockerfile) pattern='(^|/)(Docker|Container)file[^/]*$|\.(dockerfile|containerfile)$' ;;
+              # Dockerfile, dockerfile, Dockerfile.dev, app.Dockerfile,
+              # Containerfile.
+              dockerfile) pattern='(^|/)[^/]*([Dd]ocker|[Cc]ontainer)file[^/]*$' ;;
               *) pattern='' ;;
             esac
             if [ -n "$pattern" ] && ! grep -Eq "$pattern" "$targets"; then
-              echo "Skip the rules in $dir: no target file matches."
+              echo "Skip the language rules in $dir: no target file matches."
+              while IFS= read -r file; do
+                configs+=(--config "/rules/${file#semgrep-rules/}")
+              done < <(find "semgrep-rules/$dir" -type f \( -name '*.yaml' -o -name '*.yml' \) \
+                         ! -name '*.test.yaml' ! -name '*.test.yml' -print0 \
+                       | xargs -0 -r grep -lE "$other_rules" | sort)
               continue
             fi
             configs+=(--config "/rules/$dir")
@@ -303,11 +322,16 @@ jobs:
           SG_FAIL: ${{ inputs.semgrep-fail-on-findings }}
         run: |
           fail=0
-          if [ "$BL_STATUS" != 0 ] && [ "$BL_STATUS" != 99 ]; then
+          # Exit code 99 is a finding, also when the report count is empty
+          # or wrong.
+          if [ "$BL_STATUS" = 99 ]; then
+            echo "::error::Betterleaks found secrets (${BL_COUNT:-unknown}). See the job summary."
+            fail=1
+          elif [ "$BL_STATUS" != 0 ]; then
             echo "::error::Betterleaks did not complete (exit code ${BL_STATUS:-none})"
             fail=1
-          elif [ "${BL_COUNT:-0}" -gt 0 ]; then
-            echo "::error::Betterleaks found ${BL_COUNT} secrets. See the job summary."
+          elif [ "${BL_COUNT:-0}" != 0 ]; then
+            echo "::error::Betterleaks found ${BL_COUNT} secrets with exit code 0. See the job summary."
             fail=1
           fi
           if [ "$SG_STATUS" != 0 ]; then
