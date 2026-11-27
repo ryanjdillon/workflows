@@ -1,7 +1,7 @@
 name: security
 
 # Run security-scan.yml from this checkout on this repo, so a change to it is
-# tested before it merges. The weekly run scans the full history.
+# tested before it merges. The weekly run scans all the branches and tags.
 
 on:
   pull_request:
@@ -12,10 +12,11 @@ on:
 permissions:
   contents: read
 
-# A new push to a PR cancels the scan of the old head.
+# A new push to a PR cancels the scan of the old head. A scheduled run and a
+# manual run do not cancel each other.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   scan:
