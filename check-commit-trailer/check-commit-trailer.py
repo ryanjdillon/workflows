@@ -30,6 +30,10 @@ VALUE_PATTERN = r"PCL-[1-9]\d*"
 SCISSORS = "# ------------------------ >8 ------------------------"
 
 
+class ShallowClone(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class Message:
     name: str
@@ -38,7 +42,10 @@ class Message:
 
 
 def strip_comments(text: str) -> str:
-    """Remove the lines that git removes from a message in a commit-msg hook."""
+    """Remove the lines that git removes from a message in a commit-msg hook.
+
+    Only `#` is a comment character: a `core.commentChar` setting is not read.
+    """
     text = text.split(SCISSORS, 1)[0]
     return "\n".join(line for line in text.splitlines() if not line.startswith("#"))
 
@@ -93,6 +100,9 @@ def git(*args: str) -> str:
 
 def range_messages(revision_range: str) -> list[Message]:
     """Read the author and message of each non-merge commit in a range."""
+    # A shallow clone hides commits of the range, and the check would pass.
+    if git("rev-parse", "--is-shallow-repository").strip() == "true":
+        raise ShallowClone("the clone is shallow; fetch the full history")
     shas = git("rev-list", "--no-merges", revision_range).split()
     messages: list[Message] = []
     for sha in shas:
@@ -165,6 +175,9 @@ def main(argv: list[str] | None = None) -> int:
             for message in messages
             for error in check_message(message, args.key, value, exempt)
         ]
+    except ShallowClone as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
     except (OSError, UnicodeError, subprocess.CalledProcessError) as error:
         print(f"error: cannot read the commit messages: {error}", file=sys.stderr)
         return 1
