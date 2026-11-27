@@ -1,0 +1,4 @@
+fix(elec): correct the pull-up
+
+Signed-off-by: An Agent <agent@example.com>
+Paperclip: PCL-7

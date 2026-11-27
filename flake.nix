@@ -16,11 +16,15 @@
       # The path of a check's script in this repo.
       script = name: "${self}/${name}/${name}.py";
 
+      # `inputs`: more programs the script runs, for example git.
       package =
         pkgs: name:
+        {
+          inputs ? [ ],
+        }:
         pkgs.writeShellApplication {
           inherit name;
-          runtimeInputs = [ pkgs.python3 ];
+          runtimeInputs = [ pkgs.python3 ] ++ inputs;
           text = ''
             exec python3 ${script name} "$@"
           '';
@@ -29,19 +33,24 @@
       # A flake check that runs a check's script on the given arguments.
       flakeCheck =
         name:
-        { pkgs, arguments }:
-        pkgs.runCommand name { nativeBuildInputs = [ pkgs.python3 ]; } ''
+        {
+          pkgs,
+          arguments,
+          inputs ? [ ],
+        }:
+        pkgs.runCommand name { nativeBuildInputs = [ pkgs.python3 ] ++ inputs; } ''
           python3 ${script name} ${pkgs.lib.escapeShellArgs arguments}
           touch "$out"
         '';
     in
     {
       packages = forAllSystems (pkgs: {
-        check-instructions = package pkgs "check-instructions";
-        check-process-noise = package pkgs "check-process-noise";
-        check-commit-facts = package pkgs "check-commit-facts";
-        check-skills = package pkgs "check-skills";
-        check-conventional-commits = package pkgs "check-conventional-commits";
+        check-instructions = package pkgs "check-instructions" { };
+        check-process-noise = package pkgs "check-process-noise" { };
+        check-commit-facts = package pkgs "check-commit-facts" { };
+        check-skills = package pkgs "check-skills" { };
+        check-conventional-commits = package pkgs "check-conventional-commits" { };
+        check-commit-trailer = package pkgs "check-commit-trailer" { inputs = [ pkgs.git ]; };
       });
 
       # For a consumer's flake `checks`:
@@ -116,6 +125,30 @@
           arguments = args ++ files;
         };
 
+      # Checks commit message files with `git interpret-trailers`. The Nix
+      # sandbox has no git history, and no author for the files: give the
+      # author with `author`. To check the commits of a branch, use the action
+      # or the prek hook.
+      #   trailer = workflows.lib.checkCommitTrailer {
+      #     inherit pkgs; files = [ ./msg.txt ]; author = "an agent";
+      #   };
+      lib.checkCommitTrailer =
+        {
+          pkgs,
+          files,
+          author,
+          args ? [ ],
+        }:
+        (flakeCheck "check-commit-trailer" {
+          inherit pkgs;
+          arguments = args ++ files;
+          inputs = [ pkgs.git ];
+        }).overrideAttrs
+          {
+            GIT_AUTHOR_NAME = author;
+            GIT_AUTHOR_EMAIL = "nix@localhost";
+          };
+
       checks = forAllSystems (pkgs: {
         check-instructions-adapter = self.lib.checkInstructions {
           inherit pkgs;
@@ -142,6 +175,14 @@
             ./check-conventional-commits/testdata/pass/breaking.txt
             ./check-conventional-commits/testdata/pass/comments.txt
             ./check-conventional-commits/testdata/pass/scope.txt
+          ];
+        };
+        check-commit-trailer-adapter = self.lib.checkCommitTrailer {
+          inherit pkgs;
+          author = "an agent";
+          files = [
+            ./check-commit-trailer/testdata/pass/trailer.txt
+            ./check-commit-trailer/testdata/pass/two-trailers.txt
           ];
         };
       });

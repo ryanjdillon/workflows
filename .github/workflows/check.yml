@@ -228,6 +228,50 @@ jobs:
       - name: Hook
         run: check-conventional-commits/test-hook.sh
 
+  check-commit-trailer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The action reads each commit of the range.
+          fetch-depth: 0
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s check-commit-trailer
+
+      # This repo's commits have no trailer. This range is commit 89cf09d of
+      # main, by the author ryanjdillon.
+      - name: Action passes on a commit by an exempt author
+        uses: ./check-commit-trailer
+        with:
+          range: 89cf09d01380a6b2ccdfc24f06deac2d9786d04c^!
+          exempt-authors: |
+            renovate[bot]
+            ryanjdillon
+
+      - name: Action fails on a commit with no trailer
+        id: no-trailer
+        continue-on-error: true
+        uses: ./check-commit-trailer
+        with:
+          range: 89cf09d01380a6b2ccdfc24f06deac2d9786d04c^!
+
+      - name: The commit with no trailer failed
+        env:
+          NO_TRAILER: ${{ steps.no-trailer.outcome }}
+        run: |
+          [ "$NO_TRAILER" = failure ] || { echo "error: no-trailer passed" >&2; exit 1; }
+
+      # See the check-instructions job for the prek version.
+      - uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
+        with:
+          prek-version: latest-known
+          install-only: true
+
+      - name: Hook
+        run: check-commit-trailer/test-hook.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:

@@ -34,6 +34,7 @@ the same result.
 | [`check-commit-facts`](check-commit-facts/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkCommitFacts` |
 | [`check-skills`](check-skills/) | Composite action | `.pre-commit-hooks.yaml` | `packages`, `lib.checkSkills` |
 | [`check-conventional-commits`](check-conventional-commits/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkConventionalCommits` |
+| [`check-commit-trailer`](check-commit-trailer/) | Composite action | `.pre-commit-hooks.yaml` (`commit-msg`) | `packages`, `lib.checkCommitTrailer` |
 
 ### `docker-build-push.yml`
 
@@ -478,6 +479,65 @@ With Nix, `workflows.lib.checkConventionalCommits` checks message files, and a
 title with `args = [ "--title" title ]`. The sandbox has no git history, so
 use the action or the hook to check a branch. To check a range one time:
 `nix run github:ryanjdillon/workflows#check-conventional-commits -- --range origin/main..HEAD`.
+
+### `check-commit-trailer`
+
+Checks that each commit message has an issue trailer, for example
+`Paperclip: PCL-12`. The trailer links the commit to the issue that asked
+for it. The check reads the trailers as git does
+(`git interpret-trailers --parse`). Thus the trailer must be in the last
+paragraph of the message, and an issue id in the body does not count. The
+defaults are defined only in
+[`check-commit-trailer.py`](check-commit-trailer/check-commit-trailer.py):
+the key `Paperclip`, and the value pattern `PCL-[1-9]\d*`. The whole value
+must match the pattern.
+
+A commit by an exempt author needs no trailer, for example a commit by the
+owner or by Renovate. The check compares the author name (`%an`) with each
+exempt name, exactly. By default, no author is exempt. Merge commits are not
+checked.
+
+The author of a commit sets its author name. Thus the check finds a
+forgotten trailer. It is not a control against a malicious author.
+
+In GitHub Actions, check out the full history, then check the commits of the
+pull request:
+
+```yaml
+- uses: actions/checkout@<sha> # v7.0.1
+  with:
+    persist-credentials: false
+    fetch-depth: 0
+- uses: ryanjdillon/workflows/check-commit-trailer@<sha> # v1.4.0
+  if: github.event_name == 'pull_request'
+  with:
+    exempt-authors: |
+      Ryan J. Dillon
+      renovate[bot]
+```
+
+Inputs: `range` (default: `base..head` of the pull request, or
+`before..after` of the push), `exempt-authors` (one name on each line),
+`key`, and `value-pattern`. For a push that makes a branch, or a force push
+whose `before` commit is not in the clone, the action checks
+`origin/<default branch>..after`.
+
+With prek, the hook runs in the `commit-msg` stage. Install that hook type
+one time in each clone: `prek install --hook-type commit-msg`. The hook
+reads the author of the new commit from git.
+
+```yaml
+  - repo: https://github.com/ryanjdillon/workflows
+    rev: <sha> # frozen: v1.4.0
+    hooks:
+      - id: check-commit-trailer
+        args: ["--exempt-author=Ryan J. Dillon", "--exempt-author=renovate[bot]"]
+```
+
+To check a branch on your machine:
+`nix run github:ryanjdillon/workflows/<sha>#check-commit-trailer -- --range origin/main..HEAD`.
+With Nix, `workflows.lib.checkCommitTrailer` checks message files. The
+sandbox has no git history and no author, so give the `author`.
 
 ## Conventions
 

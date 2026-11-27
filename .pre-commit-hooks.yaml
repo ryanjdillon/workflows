@@ -50,3 +50,13 @@
   entry: check-conventional-commits/check-conventional-commits.py
   language: script
   stages: [commit-msg]
+
+# check-commit-trailer runs on the commit message. Install the hook type one
+# time in each clone: `prek install --hook-type commit-msg`. Give the exempt
+# authors with `args: [--exempt-author=<name>, ...]` in the caller's config.
+- id: check-commit-trailer
+  name: check commit issue trailer
+  description: "Check that the commit message has an issue trailer, for example `Paperclip: PCL-12`."
+  entry: check-commit-trailer/check-commit-trailer.py
+  language: script
+  stages: [commit-msg]

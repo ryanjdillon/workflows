@@ -1,0 +1,5 @@
+feat(mech): add the bracket
+
+Paperclip: PCL-12
+
+The bracket holds the motor.
