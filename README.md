@@ -55,6 +55,11 @@ The build cache is the GitHub Actions cache. Each `image` has its own cache
 scope. Thus, when one repository builds two images, one image does not
 overwrite the cache of the other image.
 
+Only a build on the default branch (a push or a manual run) writes the
+cache. Pull requests and tags read it. A caller that does not build on the
+default branch has no cache. To have one, build on a push to the default
+branch.
+
 The caller **must** grant `packages: write`; a reusable workflow cannot grant
 itself permissions the caller does not have.
 
