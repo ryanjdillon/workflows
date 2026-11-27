@@ -1,0 +1,295 @@
+name: security scan
+
+# Reusable security scan: Betterleaks finds secrets, and Semgrep CE does
+# static analysis. Both tools run in one job, because each job is billed at
+# least one minute.
+#
+# The scan depends on the event of the caller:
+# - pull_request: Betterleaks scans only the commits of the PR, and Semgrep
+#   reports only the new findings in the changed files (--baseline-commit).
+# - any other event (schedule, workflow_dispatch): Betterleaks scans the full
+#   history of the checked-out branch, and Semgrep scans the full tree. The
+#   full history of a large repo takes seconds, so the tree-only mode of
+#   Betterleaks is not necessary.
+#
+# A Betterleaks finding fails the job. A Semgrep finding fails the job only
+# when the caller sets semgrep-fail-on-findings.
+#
+# The job log and the summary show only the rule, the file and the line of a
+# finding, never the matched text. The reports stay in RUNNER_TEMP, and are
+# not uploaded.
+#
+# Third-party actions are pinned by commit SHA, not tag: a tag is mutable.
+
+on:
+  workflow_call:
+    inputs:
+      semgrep-rules:
+        description: >-
+          Directories of semgrep/semgrep-rules to run, one on each line.
+          generic/secrets is not in the default, because Betterleaks finds
+          secrets.
+        type: string
+        default: |
+          python
+          bash
+          dockerfile
+          javascript
+          typescript
+          go
+          yaml/github-actions
+          yaml/kubernetes
+          yaml/docker-compose
+          generic/ci
+          generic/dockerfile
+          generic/nginx
+      semgrep-fail-on-findings:
+        description: Fail the job when Semgrep has a finding.
+        type: boolean
+        default: false
+      betterleaks-config:
+        description: >-
+          Path of a Betterleaks config file in the caller's repo. Empty uses
+          the default rules of Betterleaks.
+        type: string
+        default: ""
+      timeout-minutes:
+        description: Cancel the job after this time.
+        type: number
+        default: 15
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    env:
+      # Betterleaks is MIT licensed (github.com/betterleaks/betterleaks,
+      # LICENSE). v1.10.1 was released 2026-11-12. The SHA-256 is from the
+      # checksums.txt of that release. Its Sigstore bundle,
+      # checksums.txt.sigstore.json, is signed by the release.yml workflow of
+      # betterleaks/betterleaks at refs/tags/v1.10.1. To move the version,
+      # verify the new checksums.txt with
+      # `cosign verify-blob --bundle checksums.txt.sigstore.json
+      #  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      #  --certificate-identity
+      #  https://github.com/betterleaks/betterleaks/.github/workflows/release.yml@refs/tags/vX.Y.Z
+      #  checksums.txt`, then copy the line of the linux_x64 archive.
+      BETTERLEAKS_VERSION: 1.10.1
+      BETTERLEAKS_SHA256: c174b42d7aa60caf58c0c3e555c0e4bed01fe6b0d99a412bce777b5af4ce913e
+      # Semgrep CE is LGPL-2.1 (github.com/semgrep/semgrep). This digest is
+      # the multi-platform index of semgrep/semgrep:1.185.0 on Docker Hub,
+      # from `docker buildx imagetools inspect`. 1.185.0 was released
+      # 2026-11-10.
+      SEMGREP_IMAGE: semgrep/semgrep@sha256:67518c174185a2043fdbed16c70631b79209499b3671178e7194379b48295a0d # 1.185.0
+    steps:
+      # A PR scans the head of the PR, not the merge commit, so that the
+      # range base..head has only the commits of the PR.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: src
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Both scans read the history: Betterleaks for the commits, and
+          # Semgrep for the baseline commit.
+          fetch-depth: 0
+
+      # The rules are under the Semgrep Rules License v1.0
+      # (semgrep.dev/legal/rules-license): use for internal business
+      # purposes only, with no distribution. Thus this public repo does not
+      # copy them. Each run takes them from Semgrep's own repo, at a commit
+      # of 2026-11-10 on the develop branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: semgrep/semgrep-rules
+          ref: a5ad1714f00c9f7fde980cab0ea1d6dc6d414fd2
+          path: semgrep-rules
+
+      - name: Scan range
+        id: range
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        working-directory: src
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            # The merge base, not the base tip: a newer base has commits
+            # that are not in the PR.
+            base=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
+            {
+              echo "mode=pr"
+              echo "base=$base"
+              echo "head=$HEAD_SHA"
+            } >> "$GITHUB_OUTPUT"
+            echo "PR scan: ${base}..${HEAD_SHA}"
+          else
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "Full scan of $(git rev-parse HEAD)"
+          fi
+
+      - name: Install Betterleaks
+        run: |
+          archive="betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/${archive}"
+          echo "${BETTERLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/bin" betterleaks
+          "$RUNNER_TEMP/bin/betterleaks" version
+
+      # --redact keeps the secret out of the log and the report. The
+      # summary shows only the rule, the file, the line and the commit.
+      # Exit code 99 tells a finding from an error of the tool.
+      - name: Betterleaks
+        id: betterleaks
+        env:
+          MODE: ${{ steps.range.outputs.mode }}
+          BASE: ${{ steps.range.outputs.base }}
+          HEAD: ${{ steps.range.outputs.head }}
+          CONFIG: ${{ inputs.betterleaks-config }}
+        working-directory: src
+        run: |
+          report="$RUNNER_TEMP/betterleaks.json"
+          args=(git --no-banner --no-color --redact --exit-code 99
+                --report-format json --report-path "$report")
+          if [ -n "$CONFIG" ]; then
+            args+=(--config "$CONFIG")
+          fi
+          if [ "$MODE" = pr ]; then
+            args+=("--log-opts=${BASE}..${HEAD}")
+          fi
+          status=0
+          "$RUNNER_TEMP/bin/betterleaks" "${args[@]}" . || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+          count=0
+          if [ -s "$report" ]; then
+            count=$(jq length "$report")
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Betterleaks"
+            echo
+            if [ "$MODE" = pr ]; then
+              echo "Commits \`${BASE:0:12}..${HEAD:0:12}\`. Findings: ${count}."
+            else
+              echo "Full history. Findings: ${count}."
+            fi
+            if [ "$status" != 0 ] && [ "$status" != 99 ]; then
+              echo
+              echo "Betterleaks stopped with exit code ${status}. See the job log."
+            fi
+            if [ "$count" -gt 0 ]; then
+              echo
+              echo "| Rule | File | Line | Commit |"
+              echo "| --- | --- | --- | --- |"
+              jq -r '.[:200][] | [.RuleID, .File, (.StartLine | tostring), ((.Commit // "")[:12])]
+                | map(gsub("[`|\n]"; "_") | "`" + . + "`") | "| " + join(" | ") + " |"' "$report"
+            fi
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The container has no network: the rules are local, and Semgrep has
+      # no reason to call out. The baseline mode resets the checkout to the
+      # baseline commit, so the mount is read-write. The runner's user owns
+      # the files that Semgrep writes.
+      - name: Semgrep
+        id: semgrep
+        if: ${{ !cancelled() }}
+        env:
+          MODE: ${{ steps.range.outputs.mode }}
+          BASE: ${{ steps.range.outputs.base }}
+          RULES: ${{ inputs.semgrep-rules }}
+        run: |
+          configs=()
+          while IFS= read -r dir; do
+            dir="${dir//[[:space:]]/}"
+            [ -n "$dir" ] || continue
+            if ! [[ "$dir" =~ ^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$ ]] || [ ! -d "semgrep-rules/$dir" ]; then
+              echo "error: '$dir' is not a directory of semgrep-rules" >&2
+              exit 2
+            fi
+            configs+=(--config "/rules/$dir")
+          done <<< "$RULES"
+
+          args=(scan --metrics=off --disable-version-check --json "${configs[@]}")
+          if [ "$MODE" = pr ]; then
+            args+=(--baseline-commit "$BASE")
+          fi
+
+          docker pull --quiet "$SEMGREP_IMAGE"
+          report="$RUNNER_TEMP/semgrep.json"
+          status=0
+          docker run --rm --network none \
+            --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$GITHUB_WORKSPACE/src:/src" \
+            -v "$GITHUB_WORKSPACE/semgrep-rules:/rules:ro" \
+            -w /src "$SEMGREP_IMAGE" semgrep "${args[@]}" > "$report" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+          count=0
+          errors=0
+          if [ -s "$report" ]; then
+            count=$(jq '.results | length' "$report")
+            errors=$(jq '.errors | length' "$report")
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Semgrep"
+            echo
+            if [ "$MODE" = pr ]; then
+              echo "New findings in the changed files: ${count}. Errors: ${errors}."
+            else
+              echo "Full tree. Findings: ${count}. Errors: ${errors}."
+            fi
+            if [ "$status" != 0 ]; then
+              echo
+              echo "Semgrep stopped with exit code ${status}. See the job log."
+            fi
+            if [ "$count" -gt 0 ]; then
+              echo
+              echo "| Severity | Rule | File | Line |"
+              echo "| --- | --- | --- | --- |"
+              jq -r '.results[:200][] | [(.extra.severity // ""), (.check_id | sub("^rules\\."; "")), .path, (.start.line | tostring)]
+                | map(gsub("[`|\n]"; "_") | "`" + . + "`") | "| " + join(" | ") + " |"' "$report"
+            fi
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Result
+        if: ${{ !cancelled() }}
+        env:
+          BL_STATUS: ${{ steps.betterleaks.outputs.status }}
+          BL_COUNT: ${{ steps.betterleaks.outputs.count }}
+          SG_STATUS: ${{ steps.semgrep.outputs.status }}
+          SG_COUNT: ${{ steps.semgrep.outputs.count }}
+          SG_FAIL: ${{ inputs.semgrep-fail-on-findings }}
+        run: |
+          fail=0
+          if [ "$BL_STATUS" != 0 ] && [ "$BL_STATUS" != 99 ]; then
+            echo "::error::Betterleaks did not complete (exit code ${BL_STATUS:-none})"
+            fail=1
+          elif [ "${BL_COUNT:-0}" -gt 0 ]; then
+            echo "::error::Betterleaks found ${BL_COUNT} secrets. See the job summary."
+            fail=1
+          fi
+          if [ "$SG_STATUS" != 0 ]; then
+            echo "::error::Semgrep did not complete (exit code ${SG_STATUS:-none})"
+            fail=1
+          elif [ "${SG_COUNT:-0}" -gt 0 ]; then
+            if [ "$SG_FAIL" = true ]; then
+              echo "::error::Semgrep has ${SG_COUNT} findings. See the job summary."
+              fail=1
+            else
+              echo "::warning::Semgrep has ${SG_COUNT} findings. See the job summary."
+            fi
+          fi
+          exit "$fail"
