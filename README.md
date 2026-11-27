@@ -51,6 +51,10 @@ jobs:
 Inputs: `image` (required), `registry`, `context`, `dockerfile`, `platforms`,
 `push`. Outputs: `digest`, `tags`.
 
+The build cache is the GitHub Actions cache. Each `image` has its own cache
+scope. Thus, when one repository builds two images, one image does not
+overwrite the cache of the other image.
+
 The caller **must** grant `packages: write`; a reusable workflow cannot grant
 itself permissions the caller does not have.
 

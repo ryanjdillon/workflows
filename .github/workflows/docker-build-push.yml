@@ -89,8 +89,11 @@ jobs:
           push: ${{ inputs.push }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # One cache scope per image. With the default scope ("buildkit"),
+          # each image's build overwrites the cache of the image built before
+          # it (docs.docker.com/build/cache/backends/gha, "Scope").
+          cache-from: type=gha,scope=${{ inputs.image }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.image }}
 
       # Values reach the shell through env, not ${{ }} interpolation, so a
       # crafted input cannot inject commands.
