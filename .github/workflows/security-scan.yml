@@ -208,6 +208,19 @@ jobs:
           BASE: ${{ steps.range.outputs.base }}
           RULES: ${{ inputs.semgrep-rules }}
         run: |
+          # The targets: the changed files of a PR, or all the files.
+          targets="$RUNNER_TEMP/semgrep-targets.txt"
+          if [ "$MODE" = pr ]; then
+            git -C src diff --name-only --diff-filter=d "$BASE" HEAD > "$targets"
+          else
+            git -C src ls-files > "$targets"
+          fi
+
+          # Semgrep parses all the rules before it scans, and the large rule
+          # sets take most of the time on a 2-CPU runner. Thus a rule set of
+          # one of these languages runs only when a target has its file
+          # name. The javascript rules also apply to TypeScript. The other
+          # rule sets are small, and always run.
           configs=()
           while IFS= read -r dir; do
             dir="${dir//[[:space:]]/}"
@@ -216,22 +229,38 @@ jobs:
               echo "error: '$dir' is not a directory of semgrep-rules" >&2
               exit 2
             fi
+            case "${dir%%/*}" in
+              python) pattern='\.pyi?$' ;;
+              javascript) pattern='\.([cm]?js|jsx|[cm]?ts|tsx)$' ;;
+              typescript) pattern='\.([cm]?ts|tsx)$' ;;
+              go) pattern='\.go$' ;;
+              dockerfile) pattern='(^|/)(Docker|Container)file[^/]*$|\.(dockerfile|containerfile)$' ;;
+              *) pattern='' ;;
+            esac
+            if [ -n "$pattern" ] && ! grep -Eq "$pattern" "$targets"; then
+              echo "Skip the rules in $dir: no target file matches."
+              continue
+            fi
             configs+=(--config "/rules/$dir")
           done <<< "$RULES"
 
-          args=(scan --metrics=off --disable-version-check --json "${configs[@]}")
-          if [ "$MODE" = pr ]; then
-            args+=(--baseline-commit "$BASE")
-          fi
-
-          docker pull --quiet "$SEMGREP_IMAGE"
           report="$RUNNER_TEMP/semgrep.json"
           status=0
-          docker run --rm --network none \
-            --user "$(id -u):$(id -g)" -e HOME=/tmp \
-            -v "$GITHUB_WORKSPACE/src:/src" \
-            -v "$GITHUB_WORKSPACE/semgrep-rules:/rules:ro" \
-            -w /src "$SEMGREP_IMAGE" semgrep "${args[@]}" > "$report" || status=$?
+          # With no --config, Semgrep would fetch rules from its registry.
+          if [ "${#configs[@]}" -gt 0 ]; then
+            args=(scan --metrics=off --disable-version-check --json "${configs[@]}")
+            if [ "$MODE" = pr ]; then
+              args+=(--baseline-commit "$BASE")
+            fi
+            docker pull --quiet "$SEMGREP_IMAGE"
+            docker run --rm --network none \
+              --user "$(id -u):$(id -g)" -e HOME=/tmp \
+              -v "$GITHUB_WORKSPACE/src:/src" \
+              -v "$GITHUB_WORKSPACE/semgrep-rules:/rules:ro" \
+              -w /src "$SEMGREP_IMAGE" semgrep "${args[@]}" > "$report" || status=$?
+          else
+            echo "No rule set matches the targets."
+          fi
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
           count=0
