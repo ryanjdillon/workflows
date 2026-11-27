@@ -19,6 +19,7 @@ including private repositories, with no extra configuration.
 | [`docker-build-push.yml`](.github/workflows/docker-build-push.yml) | Build a Dockerfile and push it to GHCR using the automatic `GITHUB_TOKEN` |
 | [`nix-check.yml`](.github/workflows/nix-check.yml) | Run `nix flake check`; callers start it only for changes to Nix files |
 | [`nix-devshell-check.yml`](.github/workflows/nix-devshell-check.yml) | Run a check command in the caller's flake devshell, for a toolchain that exists only in Nix |
+| [`security-scan.yml`](.github/workflows/security-scan.yml) | Find secrets with Betterleaks and run Semgrep CE static analysis, in one job |
 
 ## Shared checks
 
@@ -140,6 +141,68 @@ that keys its own directories on the same files can reuse what did not change.
 
 Cache the real directory, not a symlink to it. `actions/cache` stores a
 symlink as a symlink.
+
+### `security-scan.yml`
+
+Use this workflow in a private repo, where GitHub code scanning and secret
+scanning are not available on a personal plan. It writes the findings to the
+job summary, and does not upload SARIF.
+
+```yaml
+name: security
+on:
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    uses: ryanjdillon/workflows/.github/workflows/security-scan.yml@<sha> # v1.3.0
+```
+
+| Input | Default | Use |
+| --- | --- | --- |
+| `semgrep-rules` | `python`, `bash`, `dockerfile`, `javascript`, `typescript`, `go`, `yaml/github-actions`, `yaml/kubernetes`, `yaml/docker-compose`, `generic/ci`, `generic/dockerfile`, `generic/nginx` | Directories of `semgrep/semgrep-rules` to run, one on each line. |
+| `semgrep-fail-on-findings` | `false` | Fail the job when Semgrep has a finding. |
+| `betterleaks-config` | empty | Path of a Betterleaks config file in the caller's repo. Empty uses the default rules. |
+| `timeout-minutes` | `15` | Cancel the job after this time. |
+
+The scan depends on the event:
+
+- `pull_request`: Betterleaks scans only the commits of the PR, from the
+  merge base to the head. Semgrep reports only the new findings in the
+  changed files (`--baseline-commit`).
+- Other events, for example `schedule` and `workflow_dispatch`: Betterleaks
+  scans the full history of the branch, and Semgrep scans the full tree.
+
+A Betterleaks finding fails the job. A Semgrep finding fails the job only
+when `semgrep-fail-on-findings` is `true`. The log and the summary show only
+the rule, the file and the line, never the matched text. To ignore a
+Betterleaks finding, add its fingerprint to `.betterleaksignore` at the root
+of the repo.
+
+The workflow pins each tool:
+
+- Betterleaks (MIT) is a release archive, with its SHA-256 from the
+  `checksums.txt` of the release. The release signs `checksums.txt` with
+  Sigstore.
+- Semgrep CE (LGPL-2.1) is the `semgrep/semgrep` image, by digest. It runs
+  with `--metrics=off` and no network.
+- The rules are `semgrep/semgrep-rules` at a commit. The
+  [Semgrep Rules License](https://semgrep.dev/legal/rules-license) allows
+  internal use, and does not allow distribution. Thus this public repo does
+  not copy the rules. Each run takes them from Semgrep's repo.
+
+Do not make this check a required status check until the weekly scan of the
+default branch passes.
 
 ### `check-instructions`
 
